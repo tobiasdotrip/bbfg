@@ -26,7 +26,7 @@ LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
 
-.PHONY: all clean compdb format tidy
+.PHONY: all clean compdb format test tidy
 
 all: $(BUILD_DIR)/$(TARGET)
 
@@ -39,6 +39,9 @@ $(BUILD_DIR)/%.o: src/%.c
 
 format:
 	clang-format -i src/*.[ch]
+
+test: all
+	tests/smoke.sh ./$(BUILD_DIR)/$(TARGET)
 
 tidy:
 	clang-tidy $(SRC) -- $(CPPFLAGS) $(CFLAGS)
