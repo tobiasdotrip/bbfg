@@ -7,7 +7,9 @@
 static void
 print_usage(FILE* stream, const char* program_name)
 {
-  fprintf(stream, "usage: %s [--help] [--list-refs] <repo>\n", program_name);
+  fprintf(stream,
+          "usage: %s [--help] [--head-commit] [--list-refs] <repo>\n",
+          program_name);
 }
 
 static void
@@ -28,10 +30,33 @@ print_ref_name(const char* name, void* payload)
   return 0;
 }
 
+static int
+print_head_commit_id(git_repository* repo, const char* repo_path)
+{
+  git_reference* head = NULL;
+  if (git_repository_head(&head, repo) < 0) {
+    print_git_error("could not resolve HEAD", repo_path);
+    return -1;
+  }
+
+  git_object* head_commit = NULL;
+  if (git_reference_peel(&head_commit, head, GIT_OBJECT_COMMIT) < 0) {
+    print_git_error("HEAD does not point to a commit", repo_path);
+    git_reference_free(head);
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(git_object_id(head_commit)));
+  git_object_free(head_commit);
+  git_reference_free(head);
+  return 0;
+}
+
 int
 main(int argc, char** argv)
 {
   const char* program_name = argv[0] != NULL ? argv[0] : "bbfg";
+  int head_commit = 0;
   int list_refs = 0;
   const char* repo_path;
 
@@ -40,7 +65,10 @@ main(int argc, char** argv)
     return EXIT_SUCCESS;
   }
 
-  if (argc == 3 && strcmp(argv[1], "--list-refs") == 0) {
+  if (argc == 3 && strcmp(argv[1], "--head-commit") == 0) {
+    head_commit = 1;
+    repo_path = argv[2];
+  } else if (argc == 3 && strcmp(argv[1], "--list-refs") == 0) {
     list_refs = 1;
     repo_path = argv[2];
   } else if (argc == 2) {
@@ -63,8 +91,14 @@ main(int argc, char** argv)
     return EXIT_FAILURE;
   }
 
-  if (!list_refs) {
+  if (!head_commit && !list_refs) {
     printf("bbfg: using repository: %s\n", git_repository_path(repo));
+  }
+
+  if (head_commit && print_head_commit_id(repo, repo_path) < 0) {
+    git_repository_free(repo);
+    git_libgit2_shutdown();
+    return EXIT_FAILURE;
   }
 
   if (list_refs && git_reference_foreach_name(repo, print_ref_name, NULL) < 0) {
