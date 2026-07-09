@@ -3,49 +3,113 @@
 
 #include <git2.h>
 
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+
+typedef enum
+{
+  BBFG_COMMAND_OPEN_REPO,
+  BBFG_COMMAND_HEAD_COMMIT,
+  BBFG_COMMAND_HEAD_TREE,
+  BBFG_COMMAND_LIST_HEAD_TREE,
+  BBFG_COMMAND_LIST_REFS
+} BbfgCommand;
+
+typedef struct
+{
+  BbfgCommand command;
+  const char* repo_path;
+} BbfgOptions;
 
 static void
 print_usage(FILE* stream, const char* program_name)
 {
   fprintf(stream,
-          "usage: %s [--help] [--head-commit] [--head-tree] [--list-head-tree] "
-          "[--list-refs] <repo>\n",
+          "usage: %s [-h|--help] [-c|--head-commit] [-t|--head-tree] "
+          "[-T|--list-head-tree] [-r|--list-refs] <repo>\n",
           program_name);
+}
+
+static int
+set_command(BbfgOptions* options, BbfgCommand command)
+{
+  if (options->command != BBFG_COMMAND_OPEN_REPO) {
+    return -1;
+  }
+
+  options->command = command;
+  return 0;
+}
+
+static int
+parse_options(BbfgOptions* options, int argc, char** argv)
+{
+  static const struct option long_options[] = {
+    { "help", no_argument, NULL, 'h' },
+    { "head-commit", no_argument, NULL, 'c' },
+    { "head-tree", no_argument, NULL, 't' },
+    { "list-head-tree", no_argument, NULL, 'T' },
+    { "list-refs", no_argument, NULL, 'r' },
+    { NULL, 0, NULL, 0 }
+  };
+  int option;
+
+  options->command = BBFG_COMMAND_OPEN_REPO;
+  options->repo_path = NULL;
+  opterr = 0;
+
+  while ((option = getopt_long(argc, argv, "+hctTr", long_options, NULL)) !=
+         -1) {
+    switch (option) {
+      case 'h':
+        return 1;
+      case 'c':
+        if (set_command(options, BBFG_COMMAND_HEAD_COMMIT) < 0) {
+          return -1;
+        }
+        break;
+      case 't':
+        if (set_command(options, BBFG_COMMAND_HEAD_TREE) < 0) {
+          return -1;
+        }
+        break;
+      case 'T':
+        if (set_command(options, BBFG_COMMAND_LIST_HEAD_TREE) < 0) {
+          return -1;
+        }
+        break;
+      case 'r':
+        if (set_command(options, BBFG_COMMAND_LIST_REFS) < 0) {
+          return -1;
+        }
+        break;
+      default:
+        return -1;
+    }
+  }
+
+  if (optind + 1 != argc) {
+    return -1;
+  }
+
+  options->repo_path = argv[optind];
+  return 0;
 }
 
 int
 main(int argc, char** argv)
 {
   const char* program_name = argv[0] != NULL ? argv[0] : "bbfg";
-  int head_commit = 0;
-  int head_tree = 0;
-  int list_head_tree = 0;
-  int list_refs = 0;
-  const char* repo_path;
+  BbfgOptions options;
+  int parse_result = parse_options(&options, argc, argv);
 
-  if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+  if (parse_result > 0) {
     print_usage(stdout, program_name);
     return EXIT_SUCCESS;
   }
 
-  if (argc == 3 && strcmp(argv[1], "--head-commit") == 0) {
-    head_commit = 1;
-    repo_path = argv[2];
-  } else if (argc == 3 && strcmp(argv[1], "--head-tree") == 0) {
-    head_tree = 1;
-    repo_path = argv[2];
-  } else if (argc == 3 && strcmp(argv[1], "--list-head-tree") == 0) {
-    list_head_tree = 1;
-    repo_path = argv[2];
-  } else if (argc == 3 && strcmp(argv[1], "--list-refs") == 0) {
-    list_refs = 1;
-    repo_path = argv[2];
-  } else if (argc == 2) {
-    repo_path = argv[1];
-  } else {
+  if (parse_result < 0) {
     print_usage(stderr, program_name);
     return EXIT_FAILURE;
   }
@@ -57,41 +121,32 @@ main(int argc, char** argv)
   }
 
   git_repository* repo = NULL;
-  if (git_repository_open(&repo, repo_path) < 0) {
-    bbfg_print_git_error("could not open repository", repo_path);
+  if (git_repository_open(&repo, options.repo_path) < 0) {
+    bbfg_print_git_error("could not open repository", options.repo_path);
     git_libgit2_shutdown();
     return EXIT_FAILURE;
   }
 
-  if (!head_commit && !head_tree && !list_head_tree && !list_refs) {
-    printf("bbfg: using repository: %s\n", git_repository_path(repo));
-  }
-
-  if (head_commit && bbfg_print_head_commit_id(repo, repo_path) < 0) {
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    return EXIT_FAILURE;
-  }
-
-  if (head_tree && bbfg_print_head_tree_id(repo, repo_path) < 0) {
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    return EXIT_FAILURE;
-  }
-
-  if (list_head_tree && bbfg_print_head_tree_entries(repo, repo_path) < 0) {
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    return EXIT_FAILURE;
-  }
-
-  if (list_refs && bbfg_print_refs(repo, repo_path) < 0) {
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    return EXIT_FAILURE;
+  int command_result = 0;
+  switch (options.command) {
+    case BBFG_COMMAND_OPEN_REPO:
+      printf("bbfg: using repository: %s\n", git_repository_path(repo));
+      break;
+    case BBFG_COMMAND_HEAD_COMMIT:
+      command_result = bbfg_print_head_commit_id(repo, options.repo_path);
+      break;
+    case BBFG_COMMAND_HEAD_TREE:
+      command_result = bbfg_print_head_tree_id(repo, options.repo_path);
+      break;
+    case BBFG_COMMAND_LIST_HEAD_TREE:
+      command_result = bbfg_print_head_tree_entries(repo, options.repo_path);
+      break;
+    case BBFG_COMMAND_LIST_REFS:
+      command_result = bbfg_print_refs(repo, options.repo_path);
+      break;
   }
 
   git_repository_free(repo);
   git_libgit2_shutdown();
-  return EXIT_SUCCESS;
+  return command_result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
