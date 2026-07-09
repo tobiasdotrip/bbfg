@@ -1,3 +1,5 @@
+#include <git2.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +14,7 @@ int
 main(int argc, char** argv)
 {
   const char* program_name;
+  int init_count;
 
   program_name = argv[0] != NULL ? argv[0] : "bbfg";
 
@@ -25,6 +28,13 @@ main(int argc, char** argv)
     return EXIT_FAILURE;
   }
 
+  init_count = git_libgit2_init();
+  if (init_count < 0) {
+    fprintf(stderr, "bbfg: failed to initialize libgit2\n");
+    return EXIT_FAILURE;
+  }
+
   fprintf(stderr, "bbfg: repository support is not wired yet: %s\n", argv[1]);
+  git_libgit2_shutdown();
   return EXIT_FAILURE;
 }
