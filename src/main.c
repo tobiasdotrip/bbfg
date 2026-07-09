@@ -1,3 +1,6 @@
+#include "commands.h"
+#include "error.h"
+
 #include <git2.h>
 
 #include <stdio.h>
@@ -11,73 +14,6 @@ print_usage(FILE* stream, const char* program_name)
     stream,
     "usage: %s [--help] [--head-commit] [--head-tree] [--list-refs] <repo>\n",
     program_name);
-}
-
-static void
-print_git_error(const char* prefix, const char* detail)
-{
-  const git_error* error = git_error_last();
-  const char* message =
-    error->message != NULL ? error->message : "unknown libgit2 error";
-
-  fprintf(stderr, "bbfg: %s: %s (%s)\n", prefix, detail, message);
-}
-
-static int
-lookup_head_commit(git_commit** commit,
-                   git_repository* repo,
-                   const char* repo_path)
-{
-  git_reference* head = NULL;
-  if (git_repository_head(&head, repo) < 0) {
-    print_git_error("could not resolve HEAD", repo_path);
-    return -1;
-  }
-
-  git_object* head_object = NULL;
-  if (git_reference_peel(&head_object, head, GIT_OBJECT_COMMIT) < 0) {
-    print_git_error("HEAD does not point to a commit", repo_path);
-    git_reference_free(head);
-    return -1;
-  }
-
-  *commit = (git_commit*)head_object;
-  git_reference_free(head);
-  return 0;
-}
-
-static int
-print_ref_name(const char* name, void* payload)
-{
-  (void)payload;
-  printf("%s\n", name);
-  return 0;
-}
-
-static int
-print_head_commit_id(git_repository* repo, const char* repo_path)
-{
-  git_commit* head_commit = NULL;
-  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
-    return -1;
-  }
-
-  printf("%s\n", git_oid_tostr_s(git_commit_id(head_commit)));
-  git_commit_free(head_commit);
-  return 0;
-}
-
-static int
-print_head_tree_id(git_repository* repo, const char* repo_path)
-{
-  git_commit* head_commit = NULL;
-  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
-    return -1;
-  }
-
-  printf("%s\n", git_oid_tostr_s(git_commit_tree_id(head_commit)));
-  git_commit_free(head_commit);
-  return 0;
 }
 
 int
@@ -118,7 +54,7 @@ main(int argc, char** argv)
 
   git_repository* repo = NULL;
   if (git_repository_open(&repo, repo_path) < 0) {
-    print_git_error("could not open repository", repo_path);
+    bbfg_print_git_error("could not open repository", repo_path);
     git_libgit2_shutdown();
     return EXIT_FAILURE;
   }
@@ -127,20 +63,19 @@ main(int argc, char** argv)
     printf("bbfg: using repository: %s\n", git_repository_path(repo));
   }
 
-  if (head_commit && print_head_commit_id(repo, repo_path) < 0) {
+  if (head_commit && bbfg_print_head_commit_id(repo, repo_path) < 0) {
     git_repository_free(repo);
     git_libgit2_shutdown();
     return EXIT_FAILURE;
   }
 
-  if (head_tree && print_head_tree_id(repo, repo_path) < 0) {
+  if (head_tree && bbfg_print_head_tree_id(repo, repo_path) < 0) {
     git_repository_free(repo);
     git_libgit2_shutdown();
     return EXIT_FAILURE;
   }
 
-  if (list_refs && git_reference_foreach_name(repo, print_ref_name, NULL) < 0) {
-    print_git_error("could not list refs", repo_path);
+  if (list_refs && bbfg_print_refs(repo, repo_path) < 0) {
     git_repository_free(repo);
     git_libgit2_shutdown();
     return EXIT_FAILURE;

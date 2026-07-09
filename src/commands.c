@@ -1,0 +1,73 @@
+#include "commands.h"
+
+#include "error.h"
+
+#include <stdio.h>
+
+static int
+lookup_head_commit(git_commit** commit,
+                   git_repository* repo,
+                   const char* repo_path)
+{
+  git_reference* head = NULL;
+  if (git_repository_head(&head, repo) < 0) {
+    bbfg_print_git_error("could not resolve HEAD", repo_path);
+    return -1;
+  }
+
+  git_object* head_object = NULL;
+  if (git_reference_peel(&head_object, head, GIT_OBJECT_COMMIT) < 0) {
+    bbfg_print_git_error("HEAD does not point to a commit", repo_path);
+    git_reference_free(head);
+    return -1;
+  }
+
+  *commit = (git_commit*)head_object;
+  git_reference_free(head);
+  return 0;
+}
+
+static int
+print_ref_name(const char* name, void* payload)
+{
+  (void)payload;
+  printf("%s\n", name);
+  return 0;
+}
+
+int
+bbfg_print_head_commit_id(git_repository* repo, const char* repo_path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(git_commit_id(head_commit)));
+  git_commit_free(head_commit);
+  return 0;
+}
+
+int
+bbfg_print_head_tree_id(git_repository* repo, const char* repo_path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(git_commit_tree_id(head_commit)));
+  git_commit_free(head_commit);
+  return 0;
+}
+
+int
+bbfg_print_refs(git_repository* repo, const char* repo_path)
+{
+  if (git_reference_foreach_name(repo, print_ref_name, NULL) < 0) {
+    bbfg_print_git_error("could not list refs", repo_path);
+    return -1;
+  }
+
+  return 0;
+}
