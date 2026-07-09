@@ -16,12 +16,14 @@ typedef enum
   BBFG_COMMAND_LIST_REFS,
   BBFG_COMMAND_LIST_REWRITE_REFS,
   BBFG_COMMAND_LIST_REWRITE_COMMITS,
-  BBFG_COMMAND_REBUILD_HEAD_TREE
+  BBFG_COMMAND_REBUILD_HEAD_TREE,
+  BBFG_COMMAND_REMOVE_HEAD_ENTRY
 } BbfgCommand;
 
 typedef struct
 {
   BbfgCommand command;
+  const char* entry_name;
   const char* repo_path;
 } BbfgOptions;
 
@@ -32,6 +34,7 @@ print_usage(FILE* stream, const char* program_name)
           "usage: %s [-h|--help] [-c|--head-commit] [-t|--head-tree] "
           "[-T|--list-head-tree] [-r|--list-refs] [-R|--list-rewrite-refs] "
           "[-w|--walk-rewrite-commits] [-B|--rebuild-head-tree] "
+          "[-d|--remove-head-entry name] "
           "<repo>\n",
           program_name);
 }
@@ -59,56 +62,54 @@ parse_options(BbfgOptions* options, int argc, char** argv)
     { "list-rewrite-refs", no_argument, NULL, 'R' },
     { "walk-rewrite-commits", no_argument, NULL, 'w' },
     { "rebuild-head-tree", no_argument, NULL, 'B' },
+    { "remove-head-entry", required_argument, NULL, 'd' },
     { NULL, 0, NULL, 0 }
   };
   int option;
 
   options->command = BBFG_COMMAND_OPEN_REPO;
+  options->entry_name = NULL;
   options->repo_path = NULL;
   opterr = 0;
 
-  while ((option = getopt_long(argc, argv, "+hctTrRwB", long_options, NULL)) !=
-         -1) {
+  while ((option =
+            getopt_long(argc, argv, "+hctTrRwBd:", long_options, NULL)) != -1) {
+    BbfgCommand command;
+
     switch (option) {
       case 'h':
         return 1;
       case 'c':
-        if (set_command(options, BBFG_COMMAND_HEAD_COMMIT) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_HEAD_COMMIT;
         break;
       case 't':
-        if (set_command(options, BBFG_COMMAND_HEAD_TREE) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_HEAD_TREE;
         break;
       case 'T':
-        if (set_command(options, BBFG_COMMAND_LIST_HEAD_TREE) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_LIST_HEAD_TREE;
         break;
       case 'r':
-        if (set_command(options, BBFG_COMMAND_LIST_REFS) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_LIST_REFS;
         break;
       case 'R':
-        if (set_command(options, BBFG_COMMAND_LIST_REWRITE_REFS) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_LIST_REWRITE_REFS;
         break;
       case 'w':
-        if (set_command(options, BBFG_COMMAND_LIST_REWRITE_COMMITS) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_LIST_REWRITE_COMMITS;
         break;
       case 'B':
-        if (set_command(options, BBFG_COMMAND_REBUILD_HEAD_TREE) < 0) {
-          return -1;
-        }
+        command = BBFG_COMMAND_REBUILD_HEAD_TREE;
+        break;
+      case 'd':
+        command = BBFG_COMMAND_REMOVE_HEAD_ENTRY;
+        options->entry_name = optarg;
         break;
       default:
         return -1;
+    }
+
+    if (set_command(options, command) < 0) {
+      return -1;
     }
   }
 
@@ -175,6 +176,10 @@ main(int argc, char** argv)
       break;
     case BBFG_COMMAND_REBUILD_HEAD_TREE:
       command_result = bbfg_rebuild_head_tree(repo, options.repo_path);
+      break;
+    case BBFG_COMMAND_REMOVE_HEAD_ENTRY:
+      command_result = bbfg_remove_head_tree_entry(
+        repo, options.repo_path, options.entry_name);
       break;
   }
 

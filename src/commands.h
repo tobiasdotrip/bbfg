@@ -16,6 +16,10 @@ bbfg_print_rewrite_commits(git_repository* repo, const char* repo_path);
 int
 bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path);
 int
+bbfg_remove_head_tree_entry(git_repository* repo,
+                            const char* repo_path,
+                            const char* entry_name);
+int
 bbfg_print_refs(git_repository* repo, const char* repo_path);
 
 #endif
