@@ -9,7 +9,7 @@ bbfg_print_git_error(const char* prefix, const char* detail)
 {
   const git_error* error = git_error_last();
   const char* message =
-    error->message != NULL ? error->message : "unknown libgit2 error";
+    error != NULL && error->message != NULL ? error->message : "unknown error";
 
   fprintf(stderr, "bbfg: %s: %s (%s)\n", prefix, detail, message);
 }

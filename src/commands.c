@@ -1,6 +1,7 @@
 #include "commands.h"
 
 #include "error.h"
+#include "tree.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -209,7 +210,7 @@ bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path)
 int
 bbfg_remove_head_tree_entry(git_repository* repo,
                             const char* repo_path,
-                            const char* entry_name)
+                            const char* path)
 {
   git_commit* head_commit = NULL;
   if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
@@ -223,33 +224,15 @@ bbfg_remove_head_tree_entry(git_repository* repo,
     return -1;
   }
 
-  git_treebuilder* builder = NULL;
-  if (git_treebuilder_new(&builder, repo, tree) < 0) {
-    bbfg_print_git_error("could not create tree builder", repo_path);
-    git_tree_free(tree);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
-  if (git_treebuilder_remove(builder, entry_name) < 0) {
-    bbfg_print_git_error("could not remove tree entry", entry_name);
-    git_treebuilder_free(builder);
-    git_tree_free(tree);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
   git_oid rebuilt_tree_id;
-  if (git_treebuilder_write(&rebuilt_tree_id, builder) < 0) {
-    bbfg_print_git_error("could not write rebuilt tree", repo_path);
-    git_treebuilder_free(builder);
+  if (bbfg_tree_remove_path(&rebuilt_tree_id, repo, tree, path) < 0) {
+    bbfg_print_git_error("could not remove tree path", path);
     git_tree_free(tree);
     git_commit_free(head_commit);
     return -1;
   }
 
   printf("%s\n", git_oid_tostr_s(&rebuilt_tree_id));
-  git_treebuilder_free(builder);
   git_tree_free(tree);
   git_commit_free(head_commit);
   return 0;

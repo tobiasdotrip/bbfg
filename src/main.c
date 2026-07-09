@@ -64,8 +64,8 @@ main(int argc, char** argv)
       command_result = bbfg_rebuild_head_tree(repo, options.repo_path);
       break;
     case BBFG_COMMAND_REMOVE_HEAD_ENTRY:
-      command_result = bbfg_remove_head_tree_entry(
-        repo, options.repo_path, options.entry_name);
+      command_result =
+        bbfg_remove_head_tree_entry(repo, options.repo_path, options.path);
       break;
   }
 

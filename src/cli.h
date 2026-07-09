@@ -19,7 +19,7 @@ typedef enum
 typedef struct
 {
   BbfgCommand command;
-  const char* entry_name;
+  const char* path;
   const char* repo_path;
 } BbfgOptions;
 

@@ -18,7 +18,10 @@ git -C "$repo" config user.name "bbfg test"
 git -C "$repo" config user.email "bbfg@example.invalid"
 
 printf 'hello\n' > "$repo/file.txt"
+mkdir "$repo/dir"
+printf 'nested\n' > "$repo/dir/nested.txt"
 git -C "$repo" add file.txt
+git -C "$repo" add dir/nested.txt
 git -C "$repo" commit -q -m "Initial commit"
 
 "$bbfg" "$repo" >/tmp/bbfg-open.out
@@ -56,8 +59,16 @@ git -C "$repo" ls-tree HEAD >/tmp/bbfg-list-tree.expected
 diff -u /tmp/bbfg-list-tree.expected /tmp/bbfg-list-tree.out
 
 "$bbfg" --remove-head-entry file.txt "$repo" >/tmp/bbfg-remove-entry.out
-git -C "$repo" mktree </dev/null >/tmp/bbfg-remove-entry.expected
+git -C "$repo" read-tree HEAD
+git -C "$repo" rm -q --cached file.txt
+git -C "$repo" write-tree >/tmp/bbfg-remove-entry.expected
 diff -u /tmp/bbfg-remove-entry.expected /tmp/bbfg-remove-entry.out
+
+"$bbfg" --remove-head-entry dir/nested.txt "$repo" >/tmp/bbfg-remove-path.out
+git -C "$repo" read-tree HEAD
+git -C "$repo" rm -q --cached dir/nested.txt
+git -C "$repo" write-tree >/tmp/bbfg-remove-path.expected
+diff -u /tmp/bbfg-remove-path.expected /tmp/bbfg-remove-path.out
 
 "$bbfg" --list-rewrite-refs "$repo" >/tmp/bbfg-rewrite-refs.out
 git -C "$repo" for-each-ref --format='%(refname)' refs/heads refs/tags \

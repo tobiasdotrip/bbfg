@@ -38,7 +38,7 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "usage: %s [-h|--help] [-c|--head-commit] [-t|--head-tree] "
           "[-T|--list-head-tree] [-r|--list-refs] [-R|--list-rewrite-refs] "
           "[-w|--walk-rewrite-commits] [-B|--rebuild-head-tree] "
-          "[-d|--remove-head-entry name] "
+          "[-d|--remove-head-entry path] "
           "<repo>\n",
           program_name);
 }
@@ -100,7 +100,7 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
 
   fill_long_options(long_options);
   options->command = BBFG_COMMAND_OPEN_REPO;
-  options->entry_name = NULL;
+  options->path = NULL;
   options->repo_path = NULL;
   opterr = 0;
 
@@ -118,7 +118,7 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
     }
 
     if (command_option->command == BBFG_COMMAND_REMOVE_HEAD_ENTRY) {
-      options->entry_name = optarg;
+      options->path = optarg;
     }
 
     if (set_command(options, command_option->command) < 0) {
