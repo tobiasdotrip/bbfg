@@ -31,7 +31,15 @@ main(int argc, char** argv)
     return EXIT_FAILURE;
   }
 
-  fprintf(stderr, "bbfg: repository support is not wired yet: %s\n", argv[1]);
+  git_repository* repo = NULL;
+  if (git_repository_open(&repo, argv[1]) < 0) {
+    fprintf(stderr, "bbfg: could not open repository: %s\n", argv[1]);
+    git_libgit2_shutdown();
+    return EXIT_FAILURE;
+  }
+
+  printf("bbfg: using repository: %s\n", git_repository_path(repo));
+  git_repository_free(repo);
   git_libgit2_shutdown();
-  return EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }
