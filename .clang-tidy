@@ -1,0 +1,11 @@
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  portability-*,
+  readability-braces-around-statements,
+  readability-function-cognitive-complexity,
+  readability-misleading-indentation,
+  readability-redundant-control-flow
+WarningsAsErrors: ""
