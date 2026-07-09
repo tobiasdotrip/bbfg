@@ -1,4 +1,4 @@
 Language: C
 BasedOnStyle: Mozilla
-ColumnLimit: 100
+ColumnLimit: 80
 SortIncludes: true
