@@ -2,9 +2,27 @@
 
 `bbfg` is a small C rewrite experiment inspired by BFG Repo-Cleaner.
 
-The first target is intentionally narrow: open a Git repository with libgit2, then delete matching files from history :).
+For now it only inspects a repository. Rewriting comes later.
+
+Build:
 
 ```sh
 make
-./build/bbfg --help
+```
+
+Run the smoke test:
+
+```sh
+make test
+```
+
+Current inspection commands:
+
+```sh
+./build/bbfg .
+./build/bbfg --head-commit .
+./build/bbfg --head-tree .
+./build/bbfg --list-head-tree .
+./build/bbfg --list-rewrite-refs .
+./build/bbfg --walk-rewrite-commits .
 ```
