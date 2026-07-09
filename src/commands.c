@@ -131,3 +131,38 @@ bbfg_print_rewrite_refs(git_repository* repo, const char* repo_path)
 
   return 0;
 }
+
+int
+bbfg_print_rewrite_commits(git_repository* repo, const char* repo_path)
+{
+  git_revwalk* walk = NULL;
+  if (git_revwalk_new(&walk, repo) < 0) {
+    bbfg_print_git_error("could not create revwalk", repo_path);
+    return -1;
+  }
+
+  git_revwalk_sorting(walk, GIT_SORT_TOPOLOGICAL | GIT_SORT_REVERSE);
+
+  if (git_revwalk_push_glob(walk, "refs/heads/*") < 0 ||
+      git_revwalk_push_glob(walk, "refs/tags/*") < 0) {
+    bbfg_print_git_error("could not push rewrite refs", repo_path);
+    git_revwalk_free(walk);
+    return -1;
+  }
+
+  git_oid oid;
+  int result = git_revwalk_next(&oid, walk);
+  while (result == 0) {
+    printf("%s\n", git_oid_tostr_s(&oid));
+    result = git_revwalk_next(&oid, walk);
+  }
+
+  git_revwalk_free(walk);
+
+  if (result != GIT_ITEROVER) {
+    bbfg_print_git_error("could not walk rewrite commits", repo_path);
+    return -1;
+  }
+
+  return 0;
+}
