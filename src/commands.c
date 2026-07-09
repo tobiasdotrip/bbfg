@@ -3,6 +3,13 @@
 #include "error.h"
 
 #include <stdio.h>
+#include <string.h>
+
+static int
+has_prefix(const char* value, const char* prefix)
+{
+  return strncmp(value, prefix, strlen(prefix)) == 0;
+}
 
 static int
 lookup_head_commit(git_commit** commit,
@@ -32,6 +39,18 @@ print_ref_name(const char* name, void* payload)
 {
   (void)payload;
   printf("%s\n", name);
+  return 0;
+}
+
+static int
+print_rewrite_ref_name(const char* name, void* payload)
+{
+  (void)payload;
+
+  if (has_prefix(name, "refs/heads/") || has_prefix(name, "refs/tags/")) {
+    printf("%s\n", name);
+  }
+
   return 0;
 }
 
@@ -96,6 +115,17 @@ bbfg_print_refs(git_repository* repo, const char* repo_path)
 {
   if (git_reference_foreach_name(repo, print_ref_name, NULL) < 0) {
     bbfg_print_git_error("could not list refs", repo_path);
+    return -1;
+  }
+
+  return 0;
+}
+
+int
+bbfg_print_rewrite_refs(git_repository* repo, const char* repo_path)
+{
+  if (git_reference_foreach_name(repo, print_rewrite_ref_name, NULL) < 0) {
+    bbfg_print_git_error("could not list rewrite refs", repo_path);
     return -1;
   }
 
