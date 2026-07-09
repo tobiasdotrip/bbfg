@@ -1,5 +1,4 @@
 Language: C
-BasedOnStyle: LLVM
-IndentWidth: 4
+BasedOnStyle: Mozilla
 ColumnLimit: 100
 SortIncludes: true
