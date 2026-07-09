@@ -1,5 +1,6 @@
 bfg-repo-cleaner/
 build/
+compile_commands.json
 *.o
 *.d
 *.a

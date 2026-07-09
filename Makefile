@@ -15,17 +15,18 @@ WARNINGS := \
 	-Wstrict-prototypes \
 	-Wmissing-prototypes \
 	-Wold-style-definition \
-	-Wdeclaration-after-statement \
 	-Wvla \
 	-Werror=implicit-function-declaration \
 	-Werror=implicit-int
 
-CFLAGS := -std=c99 -pedantic -g -O0 $(WARNINGS) -MMD -MP
+DEBUGFLAGS ?= -g
+OPTFLAGS ?= -O0
+CFLAGS := -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) -MMD -MP
 LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
 
-.PHONY: all clean format tidy
+.PHONY: all clean compdb format tidy
 
 all: $(BUILD_DIR)/$(TARGET)
 
@@ -44,5 +45,8 @@ tidy:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+compdb:
+	bear -- make clean all
 
 -include $(DEP)

@@ -1,0 +1,5 @@
+CompileFlags:
+  CompilationDatabase: .
+  Add:
+    - -isystem
+    - /opt/homebrew/include
