@@ -35,6 +35,9 @@ diff -u /tmp/bbfg-head.expected /tmp/bbfg-head.out
 git -C "$repo" rev-parse 'HEAD^{tree}' >/tmp/bbfg-tree.expected
 diff -u /tmp/bbfg-tree.expected /tmp/bbfg-tree.out
 
+"$bbfg" --rebuild-head-tree "$repo" >/tmp/bbfg-rebuilt-tree.out
+diff -u /tmp/bbfg-tree.expected /tmp/bbfg-rebuilt-tree.out
+
 "$bbfg" --list-head-tree "$repo" >/tmp/bbfg-list-tree.out
 git -C "$repo" ls-tree HEAD >/tmp/bbfg-list-tree.expected
 diff -u /tmp/bbfg-list-tree.expected /tmp/bbfg-list-tree.out

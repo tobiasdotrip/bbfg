@@ -166,3 +166,42 @@ bbfg_print_rewrite_commits(git_repository* repo, const char* repo_path)
 
   return 0;
 }
+
+int
+bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  git_tree* tree = NULL;
+  if (git_commit_tree(&tree, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD tree", repo_path);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_treebuilder* builder = NULL;
+  if (git_treebuilder_new(&builder, repo, tree) < 0) {
+    bbfg_print_git_error("could not create tree builder", repo_path);
+    git_tree_free(tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_oid rebuilt_tree_id;
+  if (git_treebuilder_write(&rebuilt_tree_id, builder) < 0) {
+    bbfg_print_git_error("could not write rebuilt tree", repo_path);
+    git_treebuilder_free(builder);
+    git_tree_free(tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(&rebuilt_tree_id));
+  git_treebuilder_free(builder);
+  git_tree_free(tree);
+  git_commit_free(head_commit);
+  return 0;
+}

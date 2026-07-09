@@ -14,6 +14,8 @@ bbfg_print_rewrite_refs(git_repository* repo, const char* repo_path);
 int
 bbfg_print_rewrite_commits(git_repository* repo, const char* repo_path);
 int
+bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path);
+int
 bbfg_print_refs(git_repository* repo, const char* repo_path);
 
 #endif

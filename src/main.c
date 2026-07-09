@@ -15,7 +15,8 @@ typedef enum
   BBFG_COMMAND_LIST_HEAD_TREE,
   BBFG_COMMAND_LIST_REFS,
   BBFG_COMMAND_LIST_REWRITE_REFS,
-  BBFG_COMMAND_LIST_REWRITE_COMMITS
+  BBFG_COMMAND_LIST_REWRITE_COMMITS,
+  BBFG_COMMAND_REBUILD_HEAD_TREE
 } BbfgCommand;
 
 typedef struct
@@ -30,7 +31,7 @@ print_usage(FILE* stream, const char* program_name)
   fprintf(stream,
           "usage: %s [-h|--help] [-c|--head-commit] [-t|--head-tree] "
           "[-T|--list-head-tree] [-r|--list-refs] [-R|--list-rewrite-refs] "
-          "[-w|--walk-rewrite-commits] "
+          "[-w|--walk-rewrite-commits] [-B|--rebuild-head-tree] "
           "<repo>\n",
           program_name);
 }
@@ -57,6 +58,7 @@ parse_options(BbfgOptions* options, int argc, char** argv)
     { "list-refs", no_argument, NULL, 'r' },
     { "list-rewrite-refs", no_argument, NULL, 'R' },
     { "walk-rewrite-commits", no_argument, NULL, 'w' },
+    { "rebuild-head-tree", no_argument, NULL, 'B' },
     { NULL, 0, NULL, 0 }
   };
   int option;
@@ -65,7 +67,7 @@ parse_options(BbfgOptions* options, int argc, char** argv)
   options->repo_path = NULL;
   opterr = 0;
 
-  while ((option = getopt_long(argc, argv, "+hctTrRw", long_options, NULL)) !=
+  while ((option = getopt_long(argc, argv, "+hctTrRwB", long_options, NULL)) !=
          -1) {
     switch (option) {
       case 'h':
@@ -97,6 +99,11 @@ parse_options(BbfgOptions* options, int argc, char** argv)
         break;
       case 'w':
         if (set_command(options, BBFG_COMMAND_LIST_REWRITE_COMMITS) < 0) {
+          return -1;
+        }
+        break;
+      case 'B':
+        if (set_command(options, BBFG_COMMAND_REBUILD_HEAD_TREE) < 0) {
           return -1;
         }
         break;
@@ -165,6 +172,9 @@ main(int argc, char** argv)
       break;
     case BBFG_COMMAND_LIST_REWRITE_COMMITS:
       command_result = bbfg_print_rewrite_commits(repo, options.repo_path);
+      break;
+    case BBFG_COMMAND_REBUILD_HEAD_TREE:
+      command_result = bbfg_rebuild_head_tree(repo, options.repo_path);
       break;
   }
 
