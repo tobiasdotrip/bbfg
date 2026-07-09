@@ -102,6 +102,75 @@ load_commit_parents(const git_commit*** parents,
   return 0;
 }
 
+static int
+create_commit_without_tree_entry(git_oid* rewritten_commit_id,
+                                 git_repository* repo,
+                                 const char* repo_path,
+                                 const char* path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  git_tree* head_tree = NULL;
+  if (git_commit_tree(&head_tree, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD tree", repo_path);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_oid rewritten_tree_id;
+  if (bbfg_tree_remove_path(&rewritten_tree_id, repo, head_tree, path) < 0) {
+    bbfg_print_git_error("could not remove tree path", path);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_tree* rewritten_tree = NULL;
+  if (git_tree_lookup(&rewritten_tree, repo, &rewritten_tree_id) < 0) {
+    bbfg_print_git_error("could not read rewritten tree", repo_path);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  const git_commit** parents = NULL;
+  size_t parent_count = 0;
+  if (load_commit_parents(&parents, &parent_count, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD parents", repo_path);
+    git_tree_free(rewritten_tree);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  if (git_commit_create(rewritten_commit_id,
+                        repo,
+                        NULL,
+                        git_commit_author(head_commit),
+                        git_commit_committer(head_commit),
+                        git_commit_message_encoding(head_commit),
+                        git_commit_message_raw(head_commit),
+                        rewritten_tree,
+                        parent_count,
+                        parents) < 0) {
+    bbfg_print_git_error("could not create rewritten commit", repo_path);
+    free_commit_array(parents, parent_count);
+    git_tree_free(rewritten_tree);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  free_commit_array(parents, parent_count);
+  git_tree_free(rewritten_tree);
+  git_tree_free(head_tree);
+  git_commit_free(head_commit);
+  return 0;
+}
+
 int
 bbfg_print_head_commit_id(git_repository* repo, const char* repo_path)
 {
@@ -290,67 +359,39 @@ bbfg_commit_without_tree_entry(git_repository* repo,
                                const char* repo_path,
                                const char* path)
 {
-  git_commit* head_commit = NULL;
-  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
-    return -1;
-  }
-
-  git_tree* head_tree = NULL;
-  if (git_commit_tree(&head_tree, head_commit) < 0) {
-    bbfg_print_git_error("could not read HEAD tree", repo_path);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
-  git_oid rewritten_tree_id;
-  if (bbfg_tree_remove_path(&rewritten_tree_id, repo, head_tree, path) < 0) {
-    bbfg_print_git_error("could not remove tree path", path);
-    git_tree_free(head_tree);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
-  git_tree* rewritten_tree = NULL;
-  if (git_tree_lookup(&rewritten_tree, repo, &rewritten_tree_id) < 0) {
-    bbfg_print_git_error("could not read rewritten tree", repo_path);
-    git_tree_free(head_tree);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
-  const git_commit** parents = NULL;
-  size_t parent_count = 0;
-  if (load_commit_parents(&parents, &parent_count, head_commit) < 0) {
-    bbfg_print_git_error("could not read HEAD parents", repo_path);
-    git_tree_free(rewritten_tree);
-    git_tree_free(head_tree);
-    git_commit_free(head_commit);
-    return -1;
-  }
-
   git_oid rewritten_commit_id;
-  if (git_commit_create(&rewritten_commit_id,
-                        repo,
-                        NULL,
-                        git_commit_author(head_commit),
-                        git_commit_committer(head_commit),
-                        git_commit_message_encoding(head_commit),
-                        git_commit_message_raw(head_commit),
-                        rewritten_tree,
-                        parent_count,
-                        parents) < 0) {
-    bbfg_print_git_error("could not create rewritten commit", repo_path);
-    free_commit_array(parents, parent_count);
-    git_tree_free(rewritten_tree);
-    git_tree_free(head_tree);
-    git_commit_free(head_commit);
+  if (create_commit_without_tree_entry(
+        &rewritten_commit_id, repo, repo_path, path) < 0) {
     return -1;
   }
 
   printf("%s\n", git_oid_tostr_s(&rewritten_commit_id));
-  free_commit_array(parents, parent_count);
-  git_tree_free(rewritten_tree);
-  git_tree_free(head_tree);
-  git_commit_free(head_commit);
+  return 0;
+}
+
+int
+bbfg_write_rewrite_ref(git_repository* repo,
+                       const char* repo_path,
+                       const char* path)
+{
+  git_oid rewritten_commit_id;
+  if (create_commit_without_tree_entry(
+        &rewritten_commit_id, repo, repo_path, path) < 0) {
+    return -1;
+  }
+
+  git_reference* rewrite_ref = NULL;
+  if (git_reference_create(&rewrite_ref,
+                           repo,
+                           "refs/heads/bbfg-rewrite",
+                           &rewritten_commit_id,
+                           1,
+                           "bbfg rewrite") < 0) {
+    bbfg_print_git_error("could not write rewrite ref", repo_path);
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(&rewritten_commit_id));
+  git_reference_free(rewrite_ref);
   return 0;
 }

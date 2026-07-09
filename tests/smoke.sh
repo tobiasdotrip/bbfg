@@ -81,6 +81,16 @@ diff -u /tmp/bbfg-remove-path.expected /tmp/bbfg-commit-tree.out
 git -C "$repo" rev-parse HEAD >/tmp/bbfg-head-after-commit.out
 diff -u /tmp/bbfg-head.expected /tmp/bbfg-head-after-commit.out
 
+"$bbfg" --write-rewrite-ref dir/nested.txt "$repo" >/tmp/bbfg-rewrite-ref.out
+git -C "$repo" rev-parse refs/heads/bbfg-rewrite \
+	>/tmp/bbfg-rewrite-ref.expected
+diff -u /tmp/bbfg-rewrite-ref.expected /tmp/bbfg-rewrite-ref.out
+git -C "$repo" rev-parse "$(cat /tmp/bbfg-rewrite-ref.out)^{tree}" \
+	>/tmp/bbfg-rewrite-ref-tree.out
+diff -u /tmp/bbfg-remove-path.expected /tmp/bbfg-rewrite-ref-tree.out
+git -C "$repo" rev-parse HEAD >/tmp/bbfg-head-after-ref.out
+diff -u /tmp/bbfg-head.expected /tmp/bbfg-head-after-ref.out
+
 "$bbfg" --list-rewrite-refs "$repo" >/tmp/bbfg-rewrite-refs.out
 git -C "$repo" for-each-ref --format='%(refname)' refs/heads refs/tags \
 	>/tmp/bbfg-rewrite-refs.expected
@@ -88,5 +98,6 @@ diff -u /tmp/bbfg-rewrite-refs.expected /tmp/bbfg-rewrite-refs.out
 
 "$bbfg" --walk-rewrite-commits "$repo" >/tmp/bbfg-walk.out
 git -C "$repo" rev-list --topo-order --reverse refs/heads/main \
+	refs/heads/bbfg-rewrite \
 	>/tmp/bbfg-walk.expected
 diff -u /tmp/bbfg-walk.expected /tmp/bbfg-walk.out

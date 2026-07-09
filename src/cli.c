@@ -29,7 +29,11 @@ static const BbfgCommandOption command_options[] = {
   { "commit-without-entry",
     required_argument,
     'C',
-    BBFG_COMMAND_COMMIT_WITHOUT_ENTRY }
+    BBFG_COMMAND_COMMIT_WITHOUT_ENTRY },
+  { "write-rewrite-ref",
+    required_argument,
+    'W',
+    BBFG_COMMAND_WRITE_REWRITE_REF }
 };
 
 static const size_t command_options_count =
@@ -43,6 +47,7 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "[-T|--list-head-tree] [-r|--list-refs] [-R|--list-rewrite-refs] "
           "[-w|--walk-rewrite-commits] [-B|--rebuild-head-tree] "
           "[-d|--remove-head-entry path] [-C|--commit-without-entry path] "
+          "[-W|--write-rewrite-ref path] "
           "<repo>\n",
           program_name);
 }
@@ -109,7 +114,7 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
   opterr = 0;
 
   while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:", long_options, NULL)) != -1) {
+            argc, argv, "+hctTrRwBd:C:W:", long_options, NULL)) != -1) {
     const BbfgCommandOption* command_option;
 
     if (option == 'h') {
@@ -122,7 +127,8 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
     }
 
     if (command_option->command == BBFG_COMMAND_REMOVE_HEAD_ENTRY ||
-        command_option->command == BBFG_COMMAND_COMMIT_WITHOUT_ENTRY) {
+        command_option->command == BBFG_COMMAND_COMMIT_WITHOUT_ENTRY ||
+        command_option->command == BBFG_COMMAND_WRITE_REWRITE_REF) {
       options->path = optarg;
     }
 

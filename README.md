@@ -30,6 +30,7 @@ Current commands:
 ./build/bbfg --rebuild-head-tree .
 ./build/bbfg --remove-head-entry path/to/file .
 ./build/bbfg --commit-without-entry path/to/file .
+./build/bbfg --write-rewrite-ref path/to/file .
 ```
 
 Git equivalents:
@@ -46,3 +47,4 @@ Git equivalents:
 | `./build/bbfg --rebuild-head-tree .` | `git -C . read-tree HEAD && git -C . write-tree` |
 | `./build/bbfg --remove-head-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree` |
 | `./build/bbfg --commit-without-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree && git -C . commit-tree TREE -p HEAD` |
+| `./build/bbfg --write-rewrite-ref path/to/file .` | `git -C . update-ref refs/heads/bbfg-rewrite COMMIT` |
