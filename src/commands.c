@@ -62,6 +62,36 @@ bbfg_print_head_tree_id(git_repository* repo, const char* repo_path)
 }
 
 int
+bbfg_print_head_tree_entries(git_repository* repo, const char* repo_path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  git_tree* tree = NULL;
+  if (git_commit_tree(&tree, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD tree", repo_path);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  size_t entry_count = git_tree_entrycount(tree);
+  for (size_t i = 0; i < entry_count; i++) {
+    const git_tree_entry* entry = git_tree_entry_byindex(tree, i);
+    printf("%06o %s %s\t%s\n",
+           git_tree_entry_filemode_raw(entry),
+           git_object_type2string(git_tree_entry_type(entry)),
+           git_oid_tostr_s(git_tree_entry_id(entry)),
+           git_tree_entry_name(entry));
+  }
+
+  git_tree_free(tree);
+  git_commit_free(head_commit);
+  return 0;
+}
+
+int
 bbfg_print_refs(git_repository* repo, const char* repo_path)
 {
   if (git_reference_foreach_name(repo, print_ref_name, NULL) < 0) {
