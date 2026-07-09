@@ -1,0 +1,9 @@
+bfg-repo-cleaner/
+build/
+*.o
+*.d
+*.a
+*.so
+*.dylib
+*.exe
+.DS_Store
