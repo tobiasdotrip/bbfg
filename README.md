@@ -2,7 +2,8 @@
 
 `bbfg` is a small C rewrite experiment inspired by BFG Repo-Cleaner.
 
-For now it only inspects a repository. Rewriting comes later.
+For now it prints refs and object ids, and can rebuild a HEAD tree without
+moving any ref.
 
 Build:
 
@@ -16,13 +17,30 @@ Run the smoke test:
 make test
 ```
 
-Current inspection commands:
+Current commands:
 
 ```sh
 ./build/bbfg .
 ./build/bbfg --head-commit .
 ./build/bbfg --head-tree .
 ./build/bbfg --list-head-tree .
+./build/bbfg --list-refs .
 ./build/bbfg --list-rewrite-refs .
 ./build/bbfg --walk-rewrite-commits .
+./build/bbfg --rebuild-head-tree .
+./build/bbfg --remove-head-entry path/to/file .
 ```
+
+Git equivalents:
+
+| bbfg | Git |
+| --- | --- |
+| `./build/bbfg .` | `git -C . rev-parse --absolute-git-dir` |
+| `./build/bbfg --head-commit .` | `git -C . rev-parse HEAD` |
+| `./build/bbfg --head-tree .` | `git -C . rev-parse 'HEAD^{tree}'` |
+| `./build/bbfg --list-head-tree .` | `git -C . ls-tree HEAD` |
+| `./build/bbfg --list-refs .` | `git -C . for-each-ref --format='%(refname)'` |
+| `./build/bbfg --list-rewrite-refs .` | `git -C . for-each-ref --format='%(refname)' refs/heads refs/tags` |
+| `./build/bbfg --walk-rewrite-commits .` | `git -C . rev-list --topo-order --reverse --branches --tags` |
+| `./build/bbfg --rebuild-head-tree .` | `git -C . read-tree HEAD && git -C . write-tree` |
+| `./build/bbfg --remove-head-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree` |
