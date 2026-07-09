@@ -27,6 +27,19 @@ git_dir=$(cd "$git_dir" && pwd -P)
 printf 'bbfg: using repository: %s/\n' "$git_dir" >/tmp/bbfg-open.expected
 diff -u /tmp/bbfg-open.expected /tmp/bbfg-open.out
 
+"$bbfg" --help >/tmp/bbfg-help.out
+grep '^usage: ' /tmp/bbfg-help.out >/dev/null
+
+if "$bbfg" --head-commit --head-tree "$repo" >/tmp/bbfg-invalid.out 2>&1; then
+	echo "expected duplicate commands to fail" >&2
+	exit 1
+fi
+
+if "$bbfg" "$repo" --head-commit >/tmp/bbfg-invalid.out 2>&1; then
+	echo "expected options after repo to fail" >&2
+	exit 1
+fi
+
 "$bbfg" --head-commit "$repo" >/tmp/bbfg-head.out
 git -C "$repo" rev-parse HEAD >/tmp/bbfg-head.expected
 diff -u /tmp/bbfg-head.expected /tmp/bbfg-head.out
