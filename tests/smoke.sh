@@ -70,6 +70,17 @@ git -C "$repo" rm -q --cached dir/nested.txt
 git -C "$repo" write-tree >/tmp/bbfg-remove-path.expected
 diff -u /tmp/bbfg-remove-path.expected /tmp/bbfg-remove-path.out
 
+"$bbfg" --commit-without-entry dir/nested.txt "$repo" >/tmp/bbfg-commit.out
+git -C "$repo" cat-file -t "$(cat /tmp/bbfg-commit.out)" \
+	>/tmp/bbfg-commit-type.out
+printf 'commit\n' >/tmp/bbfg-commit-type.expected
+diff -u /tmp/bbfg-commit-type.expected /tmp/bbfg-commit-type.out
+git -C "$repo" rev-parse "$(cat /tmp/bbfg-commit.out)^{tree}" \
+	>/tmp/bbfg-commit-tree.out
+diff -u /tmp/bbfg-remove-path.expected /tmp/bbfg-commit-tree.out
+git -C "$repo" rev-parse HEAD >/tmp/bbfg-head-after-commit.out
+diff -u /tmp/bbfg-head.expected /tmp/bbfg-head-after-commit.out
+
 "$bbfg" --list-rewrite-refs "$repo" >/tmp/bbfg-rewrite-refs.out
 git -C "$repo" for-each-ref --format='%(refname)' refs/heads refs/tags \
 	>/tmp/bbfg-rewrite-refs.expected

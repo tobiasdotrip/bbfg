@@ -4,6 +4,7 @@
 #include "tree.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int
@@ -52,6 +53,52 @@ print_rewrite_ref_name(const char* name, void* payload)
     printf("%s\n", name);
   }
 
+  return 0;
+}
+
+static void
+free_commit_array(const git_commit** commits, size_t count)
+{
+  size_t i;
+
+  for (i = 0; i < count; i++) {
+    git_commit_free((git_commit*)commits[i]);
+  }
+
+  free((void*)commits);
+}
+
+static int
+load_commit_parents(const git_commit*** parents,
+                    size_t* parent_count,
+                    git_commit* commit)
+{
+  unsigned int count = git_commit_parentcount(commit);
+  if (count == 0) {
+    *parents = NULL;
+    *parent_count = 0;
+    return 0;
+  }
+
+  const git_commit** loaded_parents =
+    (const git_commit**)calloc(count, sizeof(*loaded_parents));
+  if (loaded_parents == NULL) {
+    return -1;
+  }
+
+  unsigned int i;
+  for (i = 0; i < count; i++) {
+    git_commit* parent = NULL;
+    if (git_commit_parent(&parent, commit, i) < 0) {
+      free_commit_array(loaded_parents, i);
+      return -1;
+    }
+
+    loaded_parents[i] = parent;
+  }
+
+  *parents = loaded_parents;
+  *parent_count = count;
   return 0;
 }
 
@@ -234,6 +281,76 @@ bbfg_remove_head_tree_entry(git_repository* repo,
 
   printf("%s\n", git_oid_tostr_s(&rebuilt_tree_id));
   git_tree_free(tree);
+  git_commit_free(head_commit);
+  return 0;
+}
+
+int
+bbfg_commit_without_tree_entry(git_repository* repo,
+                               const char* repo_path,
+                               const char* path)
+{
+  git_commit* head_commit = NULL;
+  if (lookup_head_commit(&head_commit, repo, repo_path) < 0) {
+    return -1;
+  }
+
+  git_tree* head_tree = NULL;
+  if (git_commit_tree(&head_tree, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD tree", repo_path);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_oid rewritten_tree_id;
+  if (bbfg_tree_remove_path(&rewritten_tree_id, repo, head_tree, path) < 0) {
+    bbfg_print_git_error("could not remove tree path", path);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_tree* rewritten_tree = NULL;
+  if (git_tree_lookup(&rewritten_tree, repo, &rewritten_tree_id) < 0) {
+    bbfg_print_git_error("could not read rewritten tree", repo_path);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  const git_commit** parents = NULL;
+  size_t parent_count = 0;
+  if (load_commit_parents(&parents, &parent_count, head_commit) < 0) {
+    bbfg_print_git_error("could not read HEAD parents", repo_path);
+    git_tree_free(rewritten_tree);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  git_oid rewritten_commit_id;
+  if (git_commit_create(&rewritten_commit_id,
+                        repo,
+                        NULL,
+                        git_commit_author(head_commit),
+                        git_commit_committer(head_commit),
+                        git_commit_message_encoding(head_commit),
+                        git_commit_message_raw(head_commit),
+                        rewritten_tree,
+                        parent_count,
+                        parents) < 0) {
+    bbfg_print_git_error("could not create rewritten commit", repo_path);
+    free_commit_array(parents, parent_count);
+    git_tree_free(rewritten_tree);
+    git_tree_free(head_tree);
+    git_commit_free(head_commit);
+    return -1;
+  }
+
+  printf("%s\n", git_oid_tostr_s(&rewritten_commit_id));
+  free_commit_array(parents, parent_count);
+  git_tree_free(rewritten_tree);
+  git_tree_free(head_tree);
   git_commit_free(head_commit);
   return 0;
 }

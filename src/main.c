@@ -67,6 +67,10 @@ main(int argc, char** argv)
       command_result =
         bbfg_remove_head_tree_entry(repo, options.repo_path, options.path);
       break;
+    case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY:
+      command_result =
+        bbfg_commit_without_tree_entry(repo, options.repo_path, options.path);
+      break;
   }
 
   git_repository_free(repo);

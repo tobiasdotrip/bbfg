@@ -2,8 +2,8 @@
 
 `bbfg` is a small C rewrite experiment inspired by BFG Repo-Cleaner.
 
-For now it prints refs and object ids, and can rebuild a HEAD tree without
-moving any ref.
+For now it prints refs and object ids, rebuilds HEAD trees, and can create a
+rewritten commit without moving any ref.
 
 Build:
 
@@ -29,6 +29,7 @@ Current commands:
 ./build/bbfg --walk-rewrite-commits .
 ./build/bbfg --rebuild-head-tree .
 ./build/bbfg --remove-head-entry path/to/file .
+./build/bbfg --commit-without-entry path/to/file .
 ```
 
 Git equivalents:
@@ -44,3 +45,4 @@ Git equivalents:
 | `./build/bbfg --walk-rewrite-commits .` | `git -C . rev-list --topo-order --reverse --branches --tags` |
 | `./build/bbfg --rebuild-head-tree .` | `git -C . read-tree HEAD && git -C . write-tree` |
 | `./build/bbfg --remove-head-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree` |
+| `./build/bbfg --commit-without-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree && git -C . commit-tree TREE -p HEAD` |
