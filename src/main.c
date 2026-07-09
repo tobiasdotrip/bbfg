@@ -10,6 +10,16 @@ print_usage(FILE* stream, const char* program_name)
   fprintf(stream, "usage: %s [--help] <repo>\n", program_name);
 }
 
+static void
+print_git_error(const char* prefix, const char* detail)
+{
+  const git_error* error = git_error_last();
+  const char* message =
+    error->message != NULL ? error->message : "unknown libgit2 error";
+
+  fprintf(stderr, "bbfg: %s: %s (%s)\n", prefix, detail, message);
+}
+
 int
 main(int argc, char** argv)
 {
@@ -33,7 +43,7 @@ main(int argc, char** argv)
 
   git_repository* repo = NULL;
   if (git_repository_open(&repo, argv[1]) < 0) {
-    fprintf(stderr, "bbfg: could not open repository: %s\n", argv[1]);
+    print_git_error("could not open repository", argv[1]);
     git_libgit2_shutdown();
     return EXIT_FAILURE;
   }
