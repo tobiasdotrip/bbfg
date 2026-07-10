@@ -1,6 +1,7 @@
 #include "cli.h"
 #include "commands.h"
 #include "error.h"
+#include "filter.h"
 
 #include <git2.h>
 
@@ -67,25 +68,39 @@ main(int argc, char** argv)
       command_result =
         bbfg_remove_head_tree_entry(repo, options.repo_path, options.path);
       break;
-    case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY:
+    case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY: {
+      BbfgFilter filter;
+      bbfg_filter_delete_path(&filter, options.path);
       command_result =
-        bbfg_commit_without_tree_entry(repo, options.repo_path, options.path);
+        bbfg_commit_without_tree_entry(repo, options.repo_path, &filter);
       break;
-    case BBFG_COMMAND_WRITE_REWRITE_REF:
+    }
+    case BBFG_COMMAND_WRITE_REWRITE_REF: {
+      BbfgFilter filter;
+      bbfg_filter_delete_path(&filter, options.path);
+      command_result = bbfg_write_rewrite_ref(repo, options.repo_path, &filter);
+      break;
+    }
+    case BBFG_COMMAND_REWRITE_HEAD_HISTORY: {
+      BbfgFilter filter;
+      bbfg_filter_delete_path(&filter, options.path);
       command_result =
-        bbfg_write_rewrite_ref(repo, options.repo_path, options.path);
+        bbfg_rewrite_head_history_ref(repo, options.repo_path, &filter);
       break;
-    case BBFG_COMMAND_REWRITE_HEAD_HISTORY:
+    }
+    case BBFG_COMMAND_REWRITE_REF: {
+      BbfgFilter filter;
+      bbfg_filter_delete_path(&filter, options.path);
       command_result =
-        bbfg_rewrite_head_history_ref(repo, options.repo_path, options.path);
+        bbfg_rewrite_ref(repo, options.repo_path, options.ref_name, &filter);
       break;
-    case BBFG_COMMAND_REWRITE_REF:
-      command_result = bbfg_rewrite_ref(
-        repo, options.repo_path, options.ref_name, options.path);
+    }
+    case BBFG_COMMAND_REWRITE_REFS: {
+      BbfgFilter filter;
+      bbfg_filter_delete_path(&filter, options.path);
+      command_result = bbfg_rewrite_refs(repo, options.repo_path, &filter);
       break;
-    case BBFG_COMMAND_REWRITE_REFS:
-      command_result = bbfg_rewrite_refs(repo, options.repo_path, options.path);
-      break;
+    }
   }
 
   git_repository_free(repo);

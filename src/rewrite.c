@@ -1,8 +1,8 @@
 #include "rewrite.h"
 
 #include "error.h"
+#include "filter.h"
 #include "repository.h"
-#include "tree.h"
 
 #include <stdlib.h>
 
@@ -30,7 +30,7 @@ rewrite_history_from_walk(CommitRewriteMap* map,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
-                          const char* path);
+                          const BbfgFilter* filter);
 
 static void
 free_commit_array(const git_commit** commits, size_t count)
@@ -164,12 +164,12 @@ load_rewritten_parents(const git_commit*** parents,
 }
 
 static int
-tree_without_path(git_oid* rewritten_tree_id,
-                  git_repository* repo,
-                  git_commit* commit,
-                  const char* repo_path,
-                  const char* path,
-                  MissingPathMode missing_path_mode)
+filter_commit_tree(git_oid* rewritten_tree_id,
+                   git_repository* repo,
+                   git_commit* commit,
+                   const char* repo_path,
+                   const BbfgFilter* filter,
+                   MissingPathMode missing_path_mode)
 {
   git_tree* tree = NULL;
   if (git_commit_tree(&tree, commit) < 0) {
@@ -177,9 +177,9 @@ tree_without_path(git_oid* rewritten_tree_id,
     return -1;
   }
 
-  git_tree_entry* entry = NULL;
-  int result = git_tree_entry_bypath(&entry, tree, path);
-  if (result == GIT_ENOTFOUND &&
+  int matches = 0;
+  int result = bbfg_filter_matches_tree(&matches, filter, tree);
+  if (result == 0 && !matches &&
       missing_path_mode == BBFG_MISSING_PATH_IS_UNCHANGED) {
     git_oid_cpy(rewritten_tree_id, git_commit_tree_id(commit));
     git_tree_free(tree);
@@ -187,15 +187,13 @@ tree_without_path(git_oid* rewritten_tree_id,
   }
 
   if (result < 0) {
-    bbfg_print_git_error("could not find tree path", path);
+    bbfg_print_git_error("could not match tree filter", repo_path);
     git_tree_free(tree);
     return -1;
   }
 
-  git_tree_entry_free(entry);
-
-  if (bbfg_tree_remove_path(rewritten_tree_id, repo, tree, path) < 0) {
-    bbfg_print_git_error("could not remove tree path", path);
+  if (bbfg_filter_apply_tree(rewritten_tree_id, repo, tree, filter) < 0) {
+    bbfg_print_git_error("could not apply tree filter", repo_path);
     git_tree_free(tree);
     return -1;
   }
@@ -209,15 +207,18 @@ create_rewritten_commit(git_oid* rewritten_commit_id,
                         git_repository* repo,
                         const char* repo_path,
                         git_commit* commit,
-                        const char* path,
+                        const BbfgFilter* filter,
                         MissingPathMode missing_path_mode,
                         const git_commit** parents,
                         size_t parent_count)
 {
   git_oid rewritten_tree_id;
-  if (tree_without_path(
-        &rewritten_tree_id, repo, commit, repo_path, path, missing_path_mode) <
-      0) {
+  if (filter_commit_tree(&rewritten_tree_id,
+                         repo,
+                         commit,
+                         repo_path,
+                         filter,
+                         missing_path_mode) < 0) {
     return -1;
   }
 
@@ -250,7 +251,7 @@ int
 bbfg_rewrite_head_commit(git_oid* rewritten_commit_id,
                          git_repository* repo,
                          const char* repo_path,
-                         const char* path)
+                         const BbfgFilter* filter)
 {
   git_commit* head_commit = NULL;
   if (bbfg_lookup_head_commit(&head_commit, repo, repo_path) < 0) {
@@ -269,7 +270,7 @@ bbfg_rewrite_head_commit(git_oid* rewritten_commit_id,
                                        repo,
                                        repo_path,
                                        head_commit,
-                                       path,
+                                       filter,
                                        BBFG_MISSING_PATH_IS_ERROR,
                                        parents,
                                        parent_count);
@@ -284,7 +285,7 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
                             git_repository* repo,
                             const char* repo_path,
                             git_commit* start_commit,
-                            const char* path)
+                            const BbfgFilter* filter)
 {
   git_revwalk* walk = NULL;
   if (git_revwalk_new(&walk, repo) < 0) {
@@ -300,7 +301,7 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
   }
 
   CommitRewriteMap map = { NULL, 0, 0 };
-  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, path);
+  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, filter);
   if (result == 0) {
     const git_oid* rewritten_tip_id =
       find_rewrite(&map, git_commit_id(start_commit));
@@ -339,7 +340,7 @@ rewrite_history_from_walk(CommitRewriteMap* map,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
-                          const char* path)
+                          const BbfgFilter* filter)
 {
   git_oid old_id;
   int result = git_revwalk_next(&old_id, walk);
@@ -366,7 +367,7 @@ rewrite_history_from_walk(CommitRewriteMap* map,
                                 repo,
                                 repo_path,
                                 commit,
-                                path,
+                                filter,
                                 BBFG_MISSING_PATH_IS_UNCHANGED,
                                 parents,
                                 parent_count) < 0 ||
@@ -397,7 +398,7 @@ int
 bbfg_rewrite_head_history(git_oid* rewritten_commit_id,
                           git_repository* repo,
                           const char* repo_path,
-                          const char* path)
+                          const BbfgFilter* filter)
 {
   git_commit* head_commit = NULL;
   if (bbfg_lookup_head_commit(&head_commit, repo, repo_path) < 0) {
@@ -405,7 +406,7 @@ bbfg_rewrite_head_history(git_oid* rewritten_commit_id,
   }
 
   int result = rewrite_history_from_commit(
-    rewritten_commit_id, repo, repo_path, head_commit, path);
+    rewritten_commit_id, repo, repo_path, head_commit, filter);
   git_commit_free(head_commit);
   return result;
 }
@@ -416,7 +417,7 @@ bbfg_rewrite_ref_history(git_oid* rewritten_commit_id,
                          git_repository* repo,
                          const char* repo_path,
                          const char* ref_name,
-                         const char* path)
+                         const BbfgFilter* filter)
 {
   git_commit* commit = NULL;
   if (bbfg_lookup_ref_commit(&commit, repo, ref_name) < 0) {
@@ -424,7 +425,7 @@ bbfg_rewrite_ref_history(git_oid* rewritten_commit_id,
   }
 
   int result = rewrite_history_from_commit(
-    rewritten_commit_id, repo, repo_path, commit, path);
+    rewritten_commit_id, repo, repo_path, commit, filter);
   git_commit_free(commit);
   return result;
 }
@@ -435,7 +436,7 @@ bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
                            const char* repo_path,
                            const char* const* ref_names,
                            size_t ref_count,
-                           const char* path)
+                           const BbfgFilter* filter)
 {
   git_revwalk* walk = NULL;
   if (git_revwalk_new(&walk, repo) < 0) {
@@ -467,7 +468,7 @@ bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
   }
 
   CommitRewriteMap map = { NULL, 0, 0 };
-  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, path);
+  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, filter);
   if (result == 0) {
     for (i = 0; i < ref_count; i++) {
       const git_oid* rewritten_tip_id = find_rewrite(&map, &tip_ids[i]);

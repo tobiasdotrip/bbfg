@@ -82,10 +82,10 @@ bbfg_remove_head_tree_entry(git_repository* repo,
 int
 bbfg_commit_without_tree_entry(git_repository* repo,
                                const char* repo_path,
-                               const char* path)
+                               const BbfgFilter* filter)
 {
   git_oid rewritten_commit_id;
-  if (bbfg_rewrite_head_commit(&rewritten_commit_id, repo, repo_path, path) <
+  if (bbfg_rewrite_head_commit(&rewritten_commit_id, repo, repo_path, filter) <
       0) {
     return -1;
   }
@@ -97,10 +97,10 @@ bbfg_commit_without_tree_entry(git_repository* repo,
 int
 bbfg_write_rewrite_ref(git_repository* repo,
                        const char* repo_path,
-                       const char* path)
+                       const BbfgFilter* filter)
 {
   git_oid rewritten_commit_id;
-  if (bbfg_rewrite_head_commit(&rewritten_commit_id, repo, repo_path, path) <
+  if (bbfg_rewrite_head_commit(&rewritten_commit_id, repo, repo_path, filter) <
       0) {
     return -1;
   }
@@ -118,10 +118,10 @@ bbfg_write_rewrite_ref(git_repository* repo,
 int
 bbfg_rewrite_head_history_ref(git_repository* repo,
                               const char* repo_path,
-                              const char* path)
+                              const BbfgFilter* filter)
 {
   git_oid rewritten_commit_id;
-  if (bbfg_rewrite_head_history(&rewritten_commit_id, repo, repo_path, path) <
+  if (bbfg_rewrite_head_history(&rewritten_commit_id, repo, repo_path, filter) <
       0) {
     return -1;
   }
@@ -141,11 +141,11 @@ int
 bbfg_rewrite_ref(git_repository* repo,
                  const char* repo_path,
                  const char* ref_name,
-                 const char* path)
+                 const BbfgFilter* filter)
 {
   git_oid rewritten_commit_id;
   if (bbfg_rewrite_ref_history(
-        &rewritten_commit_id, repo, repo_path, ref_name, path) < 0) {
+        &rewritten_commit_id, repo, repo_path, ref_name, filter) < 0) {
     return -1;
   }
 
@@ -159,7 +159,9 @@ bbfg_rewrite_ref(git_repository* repo,
 }
 
 int
-bbfg_rewrite_refs(git_repository* repo, const char* repo_path, const char* path)
+bbfg_rewrite_refs(git_repository* repo,
+                  const char* repo_path,
+                  const BbfgFilter* filter)
 {
   BbfgRefList refs = { NULL, 0, 0 };
   if (bbfg_collect_rewrite_refs(&refs, repo) < 0) {
@@ -178,7 +180,7 @@ bbfg_rewrite_refs(git_repository* repo, const char* repo_path, const char* path)
                                  repo_path,
                                  (const char* const*)refs.names,
                                  refs.count,
-                                 path) < 0) {
+                                 filter) < 0) {
     free(rewritten_commit_ids);
     bbfg_ref_list_dispose(&refs);
     return -1;

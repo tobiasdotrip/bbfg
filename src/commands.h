@@ -1,6 +1,8 @@
 #ifndef BBFG_COMMANDS_H
 #define BBFG_COMMANDS_H
 
+#include "filter.h"
+
 #include <git2.h>
 
 int
@@ -22,24 +24,24 @@ bbfg_remove_head_tree_entry(git_repository* repo,
 int
 bbfg_commit_without_tree_entry(git_repository* repo,
                                const char* repo_path,
-                               const char* path);
+                               const BbfgFilter* filter);
 int
 bbfg_write_rewrite_ref(git_repository* repo,
                        const char* repo_path,
-                       const char* path);
+                       const BbfgFilter* filter);
 int
 bbfg_rewrite_head_history_ref(git_repository* repo,
                               const char* repo_path,
-                              const char* path);
+                              const BbfgFilter* filter);
 int
 bbfg_rewrite_ref(git_repository* repo,
                  const char* repo_path,
                  const char* ref_name,
-                 const char* path);
+                 const BbfgFilter* filter);
 int
 bbfg_rewrite_refs(git_repository* repo,
                   const char* repo_path,
-                  const char* path);
+                  const BbfgFilter* filter);
 int
 bbfg_print_refs(git_repository* repo, const char* repo_path);
 
