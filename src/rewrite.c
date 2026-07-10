@@ -2,22 +2,16 @@
 
 #include "error.h"
 #include "filter.h"
+#include "oid_map.h"
 #include "repository.h"
 
 #include <stdlib.h>
 
 typedef struct
 {
-  git_oid old_id;
-  git_oid new_id;
-} CommitRewrite;
-
-typedef struct
-{
-  CommitRewrite* items;
-  size_t count;
-  size_t capacity;
-} CommitRewriteMap;
+  BbfgOidMap commits;
+  BbfgOidMap trees;
+} RewriteState;
 
 typedef enum
 {
@@ -26,7 +20,7 @@ typedef enum
 } MissingPathMode;
 
 static int
-rewrite_history_from_walk(CommitRewriteMap* map,
+rewrite_history_from_walk(RewriteState* state,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
@@ -78,57 +72,11 @@ load_original_parents(const git_commit*** parents,
   return 0;
 }
 
-static void
-free_rewrite_map(CommitRewriteMap* map)
-{
-  free(map->items);
-  map->items = NULL;
-  map->count = 0;
-  map->capacity = 0;
-}
-
-static int
-append_rewrite(CommitRewriteMap* map,
-               const git_oid* old_id,
-               const git_oid* new_id)
-{
-  if (map->count == map->capacity) {
-    size_t next_capacity = map->capacity == 0 ? 16 : map->capacity * 2;
-    CommitRewrite* next_items =
-      (CommitRewrite*)realloc(map->items, next_capacity * sizeof(*next_items));
-    if (next_items == NULL) {
-      return -1;
-    }
-
-    map->items = next_items;
-    map->capacity = next_capacity;
-  }
-
-  git_oid_cpy(&map->items[map->count].old_id, old_id);
-  git_oid_cpy(&map->items[map->count].new_id, new_id);
-  map->count++;
-  return 0;
-}
-
-static const git_oid*
-find_rewrite(const CommitRewriteMap* map, const git_oid* old_id)
-{
-  size_t i;
-
-  for (i = 0; i < map->count; i++) {
-    if (git_oid_equal(&map->items[i].old_id, old_id)) {
-      return &map->items[i].new_id;
-    }
-  }
-
-  return NULL;
-}
-
 static int
 load_rewritten_parents(const git_commit*** parents,
                        size_t* parent_count,
                        git_repository* repo,
-                       const CommitRewriteMap* map,
+                       const BbfgOidMap* commits,
                        git_commit* commit)
 {
   unsigned int count = git_commit_parentcount(commit);
@@ -147,7 +95,7 @@ load_rewritten_parents(const git_commit*** parents,
   unsigned int i;
   for (i = 0; i < count; i++) {
     const git_oid* old_parent_id = git_commit_parent_id(commit, i);
-    const git_oid* new_parent_id = find_rewrite(map, old_parent_id);
+    const git_oid* new_parent_id = bbfg_oid_map_get(commits, old_parent_id);
     git_commit* parent = NULL;
     if (new_parent_id == NULL ||
         git_commit_lookup(&parent, repo, new_parent_id) < 0) {
@@ -169,8 +117,18 @@ filter_commit_tree(git_oid* rewritten_tree_id,
                    git_commit* commit,
                    const char* repo_path,
                    const BbfgFilter* filter,
-                   MissingPathMode missing_path_mode)
+                   MissingPathMode missing_path_mode,
+                   BbfgOidMap* trees)
 {
+  const git_oid* original_tree_id = git_commit_tree_id(commit);
+  if (trees != NULL) {
+    const git_oid* cached_tree_id = bbfg_oid_map_get(trees, original_tree_id);
+    if (cached_tree_id != NULL) {
+      git_oid_cpy(rewritten_tree_id, cached_tree_id);
+      return 0;
+    }
+  }
+
   git_tree* tree = NULL;
   if (git_commit_tree(&tree, commit) < 0) {
     bbfg_print_git_error("could not read commit tree", repo_path);
@@ -181,9 +139,11 @@ filter_commit_tree(git_oid* rewritten_tree_id,
   int result = bbfg_filter_matches_tree(&matches, filter, tree);
   if (result == 0 && !matches &&
       missing_path_mode == BBFG_MISSING_PATH_IS_UNCHANGED) {
-    git_oid_cpy(rewritten_tree_id, git_commit_tree_id(commit));
+    git_oid_cpy(rewritten_tree_id, original_tree_id);
     git_tree_free(tree);
-    return 0;
+    return trees == NULL
+             ? 0
+             : bbfg_oid_map_put(trees, original_tree_id, rewritten_tree_id);
   }
 
   if (result < 0) {
@@ -199,7 +159,31 @@ filter_commit_tree(git_oid* rewritten_tree_id,
   }
 
   git_tree_free(tree);
-  return 0;
+  return trees == NULL
+           ? 0
+           : bbfg_oid_map_put(trees, original_tree_id, rewritten_tree_id);
+}
+
+static int
+commit_arcs_are_unchanged(git_commit* commit,
+                          const git_oid* tree_id,
+                          const git_commit** parents,
+                          size_t parent_count)
+{
+  if (!git_oid_equal(tree_id, git_commit_tree_id(commit)) ||
+      parent_count != git_commit_parentcount(commit)) {
+    return 0;
+  }
+
+  size_t i;
+  for (i = 0; i < parent_count; i++) {
+    if (!git_oid_equal(git_commit_id(parents[i]),
+                       git_commit_parent_id(commit, (unsigned int)i))) {
+      return 0;
+    }
+  }
+
+  return 1;
 }
 
 static int
@@ -210,7 +194,8 @@ create_rewritten_commit(git_oid* rewritten_commit_id,
                         const BbfgFilter* filter,
                         MissingPathMode missing_path_mode,
                         const git_commit** parents,
-                        size_t parent_count)
+                        size_t parent_count,
+                        BbfgOidMap* trees)
 {
   git_oid rewritten_tree_id;
   if (filter_commit_tree(&rewritten_tree_id,
@@ -218,8 +203,15 @@ create_rewritten_commit(git_oid* rewritten_commit_id,
                          commit,
                          repo_path,
                          filter,
-                         missing_path_mode) < 0) {
+                         missing_path_mode,
+                         trees) < 0) {
     return -1;
+  }
+
+  if (commit_arcs_are_unchanged(
+        commit, &rewritten_tree_id, parents, parent_count)) {
+    git_oid_cpy(rewritten_commit_id, git_commit_id(commit));
+    return 0;
   }
 
   git_tree* rewritten_tree = NULL;
@@ -273,7 +265,8 @@ bbfg_rewrite_head_commit(git_oid* rewritten_commit_id,
                                        filter,
                                        BBFG_MISSING_PATH_IS_ERROR,
                                        parents,
-                                       parent_count);
+                                       parent_count,
+                                       NULL);
 
   free_commit_array(parents, parent_count);
   git_commit_free(head_commit);
@@ -300,11 +293,11 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     return -1;
   }
 
-  CommitRewriteMap map = { NULL, 0, 0 };
-  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, filter);
+  RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
   if (result == 0) {
     const git_oid* rewritten_tip_id =
-      find_rewrite(&map, git_commit_id(start_commit));
+      bbfg_oid_map_get(&state.commits, git_commit_id(start_commit));
     if (rewritten_tip_id == NULL) {
       bbfg_print_git_error("could not find rewritten tip", repo_path);
       result = -1;
@@ -313,7 +306,8 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     }
   }
 
-  free_rewrite_map(&map);
+  bbfg_oid_map_dispose(&state.commits);
+  bbfg_oid_map_dispose(&state.trees);
   git_revwalk_free(walk);
   return result;
 }
@@ -336,7 +330,7 @@ push_ref_tip(git_oid* tip_id,
 }
 
 static int
-rewrite_history_from_walk(CommitRewriteMap* map,
+rewrite_history_from_walk(RewriteState* state,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
@@ -354,8 +348,8 @@ rewrite_history_from_walk(CommitRewriteMap* map,
 
     const git_commit** parents = NULL;
     size_t parent_count = 0;
-    if (load_rewritten_parents(&parents, &parent_count, repo, map, commit) <
-        0) {
+    if (load_rewritten_parents(
+          &parents, &parent_count, repo, &state->commits, commit) < 0) {
       bbfg_print_git_error("could not read rewritten parents", repo_path);
       git_commit_free(commit);
       result = -1;
@@ -370,8 +364,9 @@ rewrite_history_from_walk(CommitRewriteMap* map,
                                 filter,
                                 BBFG_MISSING_PATH_IS_UNCHANGED,
                                 parents,
-                                parent_count) < 0 ||
-        append_rewrite(map, &old_id, &new_id) < 0) {
+                                parent_count,
+                                &state->trees) < 0 ||
+        bbfg_oid_map_put(&state->commits, &old_id, &new_id) < 0) {
       free_commit_array(parents, parent_count);
       git_commit_free(commit);
       result = -1;
@@ -464,11 +459,12 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
     }
   }
 
-  CommitRewriteMap map = { NULL, 0, 0 };
-  int result = rewrite_history_from_walk(&map, repo, repo_path, walk, filter);
+  RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
   if (result == 0) {
     for (i = 0; i < ref_count; i++) {
-      const git_oid* rewritten_tip_id = find_rewrite(&map, &tip_ids[i]);
+      const git_oid* rewritten_tip_id =
+        bbfg_oid_map_get(&state.commits, &tip_ids[i]);
       if (rewritten_tip_id == NULL) {
         bbfg_print_git_error("could not find rewritten tip", refs[i].name);
         result = -1;
@@ -479,7 +475,8 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
     }
   }
 
-  free_rewrite_map(&map);
+  bbfg_oid_map_dispose(&state.commits);
+  bbfg_oid_map_dispose(&state.trees);
   free(tip_ids);
   git_revwalk_free(walk);
   return result;

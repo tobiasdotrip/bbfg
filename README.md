@@ -9,6 +9,7 @@ Build:
 
 ```sh
 make
+make release
 ```
 
 Test dependency: Criterion.
@@ -18,6 +19,26 @@ Run the tests:
 ```sh
 make test
 ```
+
+Run the rewrite benchmark:
+
+```sh
+make benchmark
+BFG_JAR=/tmp/bfg-1.15.0.jar \
+JAVA_BIN=/opt/homebrew/opt/openjdk/bin/java make benchmark
+```
+
+The comparison below was measured on macOS arm64 with 20,000 linear commits,
+libgit2 1.9.4, clang `-O3`, BFG 1.15.0, and OpenJDK 26.0.1. Compilation time is
+not included.
+
+| tool | real | user | sys |
+| --- | ---: | ---: | ---: |
+| BBFG | 7.97 s | 0.48 s | 7.31 s |
+| BFG | 4.99 s | 3.82 s | 3.76 s |
+
+BFG was 1.60x faster in this run. Its CPU time is higher than its elapsed time
+because the rewrite uses parallel workers.
 
 Current commands:
 

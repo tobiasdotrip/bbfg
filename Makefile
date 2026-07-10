@@ -34,9 +34,16 @@ CRITERION_CFLAGS := $(shell $(PKG_CONFIG) --cflags criterion)
 CRITERION_CPPFLAGS := $(patsubst -I%,-isystem %,$(CRITERION_CFLAGS))
 CRITERION_LDLIBS := $(shell $(PKG_CONFIG) --libs criterion)
 
-.PHONY: all clean compdb format test tidy
+.PHONY: all benchmark clean compdb format release test tidy
 
 all: $(BUILD_DIR)/$(TARGET)
+
+release:
+	$(MAKE) clean
+	$(MAKE) DEBUGFLAGS= OPTFLAGS=-O3 all
+
+benchmark: release
+	./bench/rewrite.sh
 
 $(BUILD_DIR)/$(TARGET): $(OBJ)
 	$(CC) $(OBJ) $(LDLIBS) -o $@
