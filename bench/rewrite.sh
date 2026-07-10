@@ -51,6 +51,7 @@ printf 'rewrite %s commits\n' "$commits"
 /usr/bin/time -p ./build/bbfg \
   --rewrite-refs --delete delete.txt "$tmpdir/changed.git" >/dev/null
 test -z "$(git -C "$tmpdir/changed.git" ls-tree -r --name-only HEAD -- delete.txt)"
+git -C "$tmpdir/changed.git" fsck --full --no-progress >/dev/null
 
 printf 'scan %s unchanged commits\n' "$commits"
 /usr/bin/time -p ./build/bbfg \
@@ -68,4 +69,5 @@ if [ -n "${BFG_JAR:-}" ]; then
       >/dev/null 2>&1' \
     sh "$java_bin" "$BFG_JAR" "$tmpdir/bfg.git"
   test -z "$(git -C "$tmpdir/bfg.git" ls-tree -r --name-only HEAD -- delete.txt)"
+  git -C "$tmpdir/bfg.git" fsck --full --no-progress >/dev/null
 fi

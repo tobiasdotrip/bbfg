@@ -2,6 +2,7 @@
 
 #include "error.h"
 #include "filter.h"
+#include "mempack.h"
 #include "oid_map.h"
 #include "repository.h"
 
@@ -294,6 +295,13 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
   }
 
   RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  BbfgMempack mempack = BBFG_MEMPACK_INIT;
+  if (bbfg_mempack_begin(&mempack, repo) < 0) {
+    bbfg_print_git_error("could not start object pack", repo_path);
+    git_revwalk_free(walk);
+    return -1;
+  }
+
   int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
   if (result == 0) {
     const git_oid* rewritten_tip_id =
@@ -306,8 +314,17 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     }
   }
 
+  if (result == 0 && bbfg_mempack_commit(&mempack, repo) < 0) {
+    bbfg_print_git_error("could not write rewritten objects", repo_path);
+    result = -1;
+  }
+  if (result < 0) {
+    bbfg_mempack_abort(&mempack);
+  }
+
   bbfg_oid_map_dispose(&state.commits);
   bbfg_oid_map_dispose(&state.trees);
+  bbfg_mempack_dispose(&mempack);
   git_revwalk_free(walk);
   return result;
 }
@@ -460,6 +477,14 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
   }
 
   RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  BbfgMempack mempack = BBFG_MEMPACK_INIT;
+  if (bbfg_mempack_begin(&mempack, repo) < 0) {
+    bbfg_print_git_error("could not start object pack", repo_path);
+    free(tip_ids);
+    git_revwalk_free(walk);
+    return -1;
+  }
+
   int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
   if (result == 0) {
     for (i = 0; i < ref_count; i++) {
@@ -475,8 +500,17 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
     }
   }
 
+  if (result == 0 && bbfg_mempack_commit(&mempack, repo) < 0) {
+    bbfg_print_git_error("could not write rewritten objects", repo_path);
+    result = -1;
+  }
+  if (result < 0) {
+    bbfg_mempack_abort(&mempack);
+  }
+
   bbfg_oid_map_dispose(&state.commits);
   bbfg_oid_map_dispose(&state.trees);
+  bbfg_mempack_dispose(&mempack);
   free(tip_ids);
   git_revwalk_free(walk);
   return result;

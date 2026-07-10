@@ -34,11 +34,11 @@ not included.
 
 | tool | real | user | sys |
 | --- | ---: | ---: | ---: |
-| BBFG | 7.97 s | 0.48 s | 7.31 s |
-| BFG | 4.99 s | 3.82 s | 3.76 s |
+| BBFG | 0.71 s | 0.60 s | 0.43 s |
+| BFG | 4.74 s | 3.51 s | 3.58 s |
 
-BFG was 1.60x faster in this run. Its CPU time is higher than its elapsed time
-because the rewrite uses parallel workers.
+BBFG was 6.68x faster in this run. BFG's CPU time is higher than its elapsed
+time because the rewrite uses parallel workers.
 
 Current commands:
 
