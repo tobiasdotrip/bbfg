@@ -7,6 +7,7 @@
 #include "tree.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 int
 bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path)
@@ -165,24 +166,38 @@ bbfg_rewrite_refs(git_repository* repo, const char* repo_path, const char* path)
     return -1;
   }
 
-  size_t i;
-  for (i = 0; i < refs.count; i++) {
-    git_oid rewritten_commit_id;
-    if (bbfg_rewrite_ref_history(
-          &rewritten_commit_id, repo, repo_path, refs.names[i], path) < 0) {
-      bbfg_ref_list_dispose(&refs);
-      return -1;
-    }
-
-    if (bbfg_write_ref(
-          repo, refs.names[i], &rewritten_commit_id, "bbfg rewrite ref") < 0) {
-      bbfg_ref_list_dispose(&refs);
-      return -1;
-    }
-
-    printf("%s %s\n", refs.names[i], git_oid_tostr_s(&rewritten_commit_id));
+  git_oid* rewritten_commit_ids =
+    (git_oid*)calloc(refs.count, sizeof(*rewritten_commit_ids));
+  if (rewritten_commit_ids == NULL && refs.count > 0) {
+    bbfg_ref_list_dispose(&refs);
+    return -1;
   }
 
+  if (bbfg_rewrite_ref_histories(rewritten_commit_ids,
+                                 repo,
+                                 repo_path,
+                                 (const char* const*)refs.names,
+                                 refs.count,
+                                 path) < 0) {
+    free(rewritten_commit_ids);
+    bbfg_ref_list_dispose(&refs);
+    return -1;
+  }
+
+  size_t i;
+  for (i = 0; i < refs.count; i++) {
+    if (bbfg_write_ref(
+          repo, refs.names[i], &rewritten_commit_ids[i], "bbfg rewrite ref") <
+        0) {
+      free(rewritten_commit_ids);
+      bbfg_ref_list_dispose(&refs);
+      return -1;
+    }
+
+    printf("%s %s\n", refs.names[i], git_oid_tostr_s(&rewritten_commit_ids[i]));
+  }
+
+  free(rewritten_commit_ids);
   bbfg_ref_list_dispose(&refs);
   return 0;
 }

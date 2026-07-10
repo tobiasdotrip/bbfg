@@ -3,6 +3,8 @@
 
 #include <git2.h>
 
+#include <stddef.h>
+
 int
 bbfg_rewrite_head_commit(git_oid* rewritten_commit_id,
                          git_repository* repo,
@@ -20,6 +22,13 @@ bbfg_rewrite_ref_history(git_oid* rewritten_commit_id,
                          const char* repo_path,
                          const char* ref_name,
                          const char* path);
+int
+bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
+                           git_repository* repo,
+                           const char* repo_path,
+                           const char* const* ref_names,
+                           size_t ref_count,
+                           const char* path);
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
 #endif
