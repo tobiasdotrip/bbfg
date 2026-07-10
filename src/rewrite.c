@@ -411,30 +411,27 @@ bbfg_rewrite_head_history(git_oid* rewritten_commit_id,
   return result;
 }
 
-// NOLINTBEGIN(bugprone-easily-swappable-parameters)
 int
-bbfg_rewrite_ref_history(git_oid* rewritten_commit_id,
+bbfg_rewrite_ref_history(BbfgRewriteRef* ref,
                          git_repository* repo,
                          const char* repo_path,
-                         const char* ref_name,
                          const BbfgFilter* filter)
 {
   git_commit* commit = NULL;
-  if (bbfg_lookup_ref_commit(&commit, repo, ref_name) < 0) {
+  if (bbfg_lookup_ref_commit(&commit, repo, ref->name) < 0) {
     return -1;
   }
 
   int result = rewrite_history_from_commit(
-    rewritten_commit_id, repo, repo_path, commit, filter);
+    &ref->rewritten_commit_id, repo, repo_path, commit, filter);
   git_commit_free(commit);
   return result;
 }
 
 int
-bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
+bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
                            git_repository* repo,
                            const char* repo_path,
-                           const char* const* ref_names,
                            size_t ref_count,
                            const BbfgFilter* filter)
 {
@@ -459,8 +456,8 @@ bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
 
   size_t i;
   for (i = 0; i < ref_count; i++) {
-    if (push_ref_tip(&tip_ids[i], walk, repo, ref_names[i]) < 0) {
-      bbfg_print_git_error("could not push rewrite tip", ref_names[i]);
+    if (push_ref_tip(&tip_ids[i], walk, repo, refs[i].name) < 0) {
+      bbfg_print_git_error("could not push rewrite tip", refs[i].name);
       free(tip_ids);
       git_revwalk_free(walk);
       return -1;
@@ -473,12 +470,12 @@ bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
     for (i = 0; i < ref_count; i++) {
       const git_oid* rewritten_tip_id = find_rewrite(&map, &tip_ids[i]);
       if (rewritten_tip_id == NULL) {
-        bbfg_print_git_error("could not find rewritten tip", ref_names[i]);
+        bbfg_print_git_error("could not find rewritten tip", refs[i].name);
         result = -1;
         break;
       }
 
-      git_oid_cpy(&rewritten_commit_ids[i], rewritten_tip_id);
+      git_oid_cpy(&refs[i].rewritten_commit_id, rewritten_tip_id);
     }
   }
 
@@ -487,4 +484,3 @@ bbfg_rewrite_ref_histories(git_oid* rewritten_commit_ids,
   git_revwalk_free(walk);
   return result;
 }
-// NOLINTEND(bugprone-easily-swappable-parameters)

@@ -1,7 +1,7 @@
 #ifndef BBFG_COMMANDS_H
 #define BBFG_COMMANDS_H
 
-#include "filter.h"
+#include "rewrite.h"
 
 #include <git2.h>
 
@@ -36,7 +36,7 @@ bbfg_rewrite_head_history_ref(git_repository* repo,
 int
 bbfg_rewrite_ref(git_repository* repo,
                  const char* repo_path,
-                 const char* ref_name,
+                 BbfgRewriteRef* ref,
                  const BbfgFilter* filter);
 int
 bbfg_rewrite_refs(git_repository* repo,

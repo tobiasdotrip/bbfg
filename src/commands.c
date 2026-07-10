@@ -9,6 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static void
+init_rewrite_refs(BbfgRewriteRef* rewrite_refs, const BbfgRefList* refs)
+{
+  size_t i;
+
+  for (i = 0; i < refs->count; i++) {
+    rewrite_refs[i].name = refs->names[i];
+  }
+}
+
 int
 bbfg_rebuild_head_tree(git_repository* repo, const char* repo_path)
 {
@@ -140,21 +150,19 @@ bbfg_rewrite_head_history_ref(git_repository* repo,
 int
 bbfg_rewrite_ref(git_repository* repo,
                  const char* repo_path,
-                 const char* ref_name,
+                 BbfgRewriteRef* ref,
                  const BbfgFilter* filter)
 {
-  git_oid rewritten_commit_id;
-  if (bbfg_rewrite_ref_history(
-        &rewritten_commit_id, repo, repo_path, ref_name, filter) < 0) {
+  if (bbfg_rewrite_ref_history(ref, repo, repo_path, filter) < 0) {
     return -1;
   }
 
-  if (bbfg_write_ref(repo, ref_name, &rewritten_commit_id, "bbfg rewrite ref") <
-      0) {
+  if (bbfg_write_ref(
+        repo, ref->name, &ref->rewritten_commit_id, "bbfg rewrite ref") < 0) {
     return -1;
   }
 
-  printf("%s\n", git_oid_tostr_s(&rewritten_commit_id));
+  printf("%s\n", git_oid_tostr_s(&ref->rewritten_commit_id));
   return 0;
 }
 
@@ -168,38 +176,38 @@ bbfg_rewrite_refs(git_repository* repo,
     return -1;
   }
 
-  git_oid* rewritten_commit_ids =
-    (git_oid*)calloc(refs.count, sizeof(*rewritten_commit_ids));
-  if (rewritten_commit_ids == NULL && refs.count > 0) {
+  BbfgRewriteRef* rewrite_refs =
+    (BbfgRewriteRef*)calloc(refs.count, sizeof(*rewrite_refs));
+  if (rewrite_refs == NULL && refs.count > 0) {
     bbfg_ref_list_dispose(&refs);
     return -1;
   }
+  init_rewrite_refs(rewrite_refs, &refs);
 
-  if (bbfg_rewrite_ref_histories(rewritten_commit_ids,
-                                 repo,
-                                 repo_path,
-                                 (const char* const*)refs.names,
-                                 refs.count,
-                                 filter) < 0) {
-    free(rewritten_commit_ids);
+  if (bbfg_rewrite_ref_histories(
+        rewrite_refs, repo, repo_path, refs.count, filter) < 0) {
+    free(rewrite_refs);
     bbfg_ref_list_dispose(&refs);
     return -1;
   }
 
   size_t i;
   for (i = 0; i < refs.count; i++) {
-    if (bbfg_write_ref(
-          repo, refs.names[i], &rewritten_commit_ids[i], "bbfg rewrite ref") <
-        0) {
-      free(rewritten_commit_ids);
+    if (bbfg_write_ref(repo,
+                       rewrite_refs[i].name,
+                       &rewrite_refs[i].rewritten_commit_id,
+                       "bbfg rewrite ref") < 0) {
+      free(rewrite_refs);
       bbfg_ref_list_dispose(&refs);
       return -1;
     }
 
-    printf("%s %s\n", refs.names[i], git_oid_tostr_s(&rewritten_commit_ids[i]));
+    printf("%s %s\n",
+           rewrite_refs[i].name,
+           git_oid_tostr_s(&rewrite_refs[i].rewritten_commit_id));
   }
 
-  free(rewritten_commit_ids);
+  free(rewrite_refs);
   bbfg_ref_list_dispose(&refs);
   return 0;
 }

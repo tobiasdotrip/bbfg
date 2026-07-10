@@ -91,8 +91,9 @@ main(int argc, char** argv)
     case BBFG_COMMAND_REWRITE_REF: {
       BbfgFilter filter;
       bbfg_filter_delete_path(&filter, options.path);
-      command_result =
-        bbfg_rewrite_ref(repo, options.repo_path, options.ref_name, &filter);
+      BbfgRewriteRef ref;
+      ref.name = options.ref_name;
+      command_result = bbfg_rewrite_ref(repo, options.repo_path, &ref, &filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_REFS: {
