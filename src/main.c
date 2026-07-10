@@ -83,6 +83,9 @@ main(int argc, char** argv)
       command_result = bbfg_rewrite_ref(
         repo, options.repo_path, options.ref_name, options.path);
       break;
+    case BBFG_COMMAND_REWRITE_REFS:
+      command_result = bbfg_rewrite_refs(repo, options.repo_path, options.path);
+      break;
   }
 
   git_repository_free(repo);

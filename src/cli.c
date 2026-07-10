@@ -38,7 +38,8 @@ static const BbfgCommandOption command_options[] = {
     required_argument,
     'H',
     BBFG_COMMAND_REWRITE_HEAD_HISTORY },
-  { "rewrite-ref", required_argument, 'u', BBFG_COMMAND_REWRITE_REF }
+  { "rewrite-ref", required_argument, 'u', BBFG_COMMAND_REWRITE_REF },
+  { "rewrite-refs", no_argument, 'U', BBFG_COMMAND_REWRITE_REFS }
 };
 
 static const size_t command_options_count =
@@ -54,7 +55,7 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "[-d|--remove-head-entry path] [-C|--commit-without-entry path] "
           "[-W|--write-rewrite-ref path] "
           "[-H|--rewrite-head-history path] "
-          "[--rewrite-ref ref --delete path] "
+          "[--rewrite-ref ref --delete path] [--rewrite-refs --delete path] "
           "<repo>\n",
           program_name);
 }
@@ -115,8 +116,14 @@ fill_long_options(struct option* long_options)
 static int
 validate_options(const BbfgOptions* options, int delete_option)
 {
-  if (options->command == BBFG_COMMAND_REWRITE_REF) {
-    return options->ref_name != NULL && delete_option;
+  if (options->command == BBFG_COMMAND_REWRITE_REF ||
+      options->command == BBFG_COMMAND_REWRITE_REFS) {
+    if (!delete_option) {
+      return 0;
+    }
+
+    return options->command == BBFG_COMMAND_REWRITE_REFS ||
+           options->ref_name != NULL;
   }
 
   return delete_option == 0;
@@ -138,7 +145,7 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
   opterr = 0;
 
   while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:W:H:u:D:", long_options, NULL)) != -1) {
+            argc, argv, "+hctTrRwBd:C:W:H:u:UD:", long_options, NULL)) != -1) {
     const BbfgCommandOption* command_option;
 
     if (option == 'h') {

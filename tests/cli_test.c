@@ -301,6 +301,19 @@ Test(cli, commands_match_git)
   cr_assert_str_eq(actual, expected_head);
   free(actual);
 
+  char* rewritten_refs =
+    read_command("%s --rewrite-refs --delete dir/nested.txt %s", bbfg, repo);
+  expected =
+    read_command("git -C %s for-each-ref --format='%%(refname) %%(objectname)' "
+                 "refs/heads refs/tags",
+                 repo);
+  cr_assert_str_eq(rewritten_refs, expected);
+  free(expected);
+
+  actual = read_command("git -C %s rev-parse 'HEAD^{tree}'", repo);
+  cr_assert_str_eq(actual, expected_removed_path);
+  free(actual);
+
   expected =
     read_command("git -C %s for-each-ref --format='%%(refname)' refs/heads "
                  "refs/tags",
@@ -323,6 +336,7 @@ Test(cli, commands_match_git)
   free(history_ref);
   free(target_before);
   free(rewritten_target);
+  free(rewritten_refs);
 
   cr_assert_eq(run_command("rm -rf %s", tmpdir), 0);
 }

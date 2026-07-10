@@ -35,6 +35,7 @@ Current commands:
 ./build/bbfg --write-rewrite-ref path/to/file .
 ./build/bbfg --rewrite-head-history path/to/file .
 ./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
+./build/bbfg --rewrite-refs --delete path/to/file .
 ```
 
 Git equivalents:
@@ -54,3 +55,4 @@ Git equivalents:
 | `./build/bbfg --write-rewrite-ref path/to/file .` | `git -C . update-ref refs/heads/bbfg-rewrite COMMIT` |
 | `./build/bbfg --rewrite-head-history path/to/file .` | `git -C . rev-list --topo-order --reverse HEAD`, then `git commit-tree` for each commit |
 | `./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .` | rewrite commits reachable from `refs/heads/main`, then `git update-ref refs/heads/main COMMIT` |
+| `./build/bbfg --rewrite-refs --delete path/to/file .` | `git -C . for-each-ref refs/heads refs/tags`, rewrite each direct commit ref, then `git update-ref REF COMMIT` |

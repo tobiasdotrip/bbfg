@@ -37,6 +37,10 @@ bbfg_rewrite_ref(git_repository* repo,
                  const char* ref_name,
                  const char* path);
 int
+bbfg_rewrite_refs(git_repository* repo,
+                  const char* repo_path,
+                  const char* path);
+int
 bbfg_print_refs(git_repository* repo, const char* repo_path);
 
 #endif
