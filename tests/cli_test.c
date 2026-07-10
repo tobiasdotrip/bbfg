@@ -149,6 +149,13 @@ init_repo(char* tmpdir, size_t tmpdir_size, char* repo, size_t repo_size)
 
   cr_assert_eq(run_command("git -C %s add file.txt dir/nested.txt", repo), 0);
   cr_assert_eq(run_command("git -C %s commit -q -m 'Initial commit'", repo), 0);
+
+  length = snprintf(file_path, sizeof(file_path), "%s/file.txt", repo);
+  cr_assert(length >= 0);
+  cr_assert((size_t)length < sizeof(file_path));
+  write_file(file_path, "hello again\n");
+  cr_assert_eq(run_command("git -C %s add file.txt", repo), 0);
+  cr_assert_eq(run_command("git -C %s commit -q -m 'Second commit'", repo), 0);
 }
 
 Test(cli, commands_match_git)
@@ -246,6 +253,54 @@ Test(cli, commands_match_git)
   cr_assert_str_eq(actual, expected_head);
   free(actual);
 
+  char* history_ref =
+    read_command("%s --rewrite-head-history dir/nested.txt %s", bbfg, repo);
+  strip_trailing_newline(history_ref);
+  expected = read_command("git -C %s rev-parse refs/heads/bbfg-rewrite", repo);
+  strip_trailing_newline(expected);
+  cr_assert_str_eq(history_ref, expected);
+  free(expected);
+
+  actual = read_command("git -C %s rev-parse '%s^{tree}'", repo, history_ref);
+  cr_assert_str_eq(actual, expected_removed_path);
+  free(actual);
+
+  expected = read_command("git -C %s rev-list --count refs/heads/main", repo);
+  actual =
+    read_command("git -C %s rev-list --count refs/heads/bbfg-rewrite", repo);
+  cr_assert_str_eq(actual, expected);
+  free(actual);
+  free(expected);
+
+  actual = read_command("git -C %s rev-parse HEAD", repo);
+  cr_assert_str_eq(actual, expected_head);
+  free(actual);
+
+  cr_assert_eq(run_command("git -C %s branch target", repo), 0);
+  char* target_before =
+    read_command("git -C %s rev-parse refs/heads/target", repo);
+  strip_trailing_newline(target_before);
+
+  char* rewritten_target = read_command(
+    "%s --rewrite-ref refs/heads/target --delete dir/nested.txt %s",
+    bbfg,
+    repo);
+  strip_trailing_newline(rewritten_target);
+  expected = read_command("git -C %s rev-parse refs/heads/target", repo);
+  strip_trailing_newline(expected);
+  cr_assert_str_eq(rewritten_target, expected);
+  cr_assert_str_neq(rewritten_target, target_before);
+  free(expected);
+
+  actual =
+    read_command("git -C %s rev-parse '%s^{tree}'", repo, rewritten_target);
+  cr_assert_str_eq(actual, expected_removed_path);
+  free(actual);
+
+  actual = read_command("git -C %s rev-parse HEAD", repo);
+  cr_assert_str_eq(actual, expected_head);
+  free(actual);
+
   expected =
     read_command("git -C %s for-each-ref --format='%%(refname)' refs/heads "
                  "refs/tags",
@@ -255,10 +310,8 @@ Test(cli, commands_match_git)
   free(actual);
   free(expected);
 
-  expected =
-    read_command("git -C %s rev-list --topo-order --reverse refs/heads/main "
-                 "refs/heads/bbfg-rewrite",
-                 repo);
+  expected = read_command(
+    "git -C %s rev-list --topo-order --reverse --branches --tags", repo);
   actual = read_command("%s --walk-rewrite-commits %s", bbfg, repo);
   cr_assert_str_eq(actual, expected);
   free(actual);
@@ -267,6 +320,9 @@ Test(cli, commands_match_git)
   free(expected_removed_path);
   free(expected_head);
   free(rewrite_ref);
+  free(history_ref);
+  free(target_before);
+  free(rewritten_target);
 
   cr_assert_eq(run_command("rm -rf %s", tmpdir), 0);
 }

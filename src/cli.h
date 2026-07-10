@@ -15,13 +15,16 @@ typedef enum
   BBFG_COMMAND_REBUILD_HEAD_TREE,
   BBFG_COMMAND_REMOVE_HEAD_ENTRY,
   BBFG_COMMAND_COMMIT_WITHOUT_ENTRY,
-  BBFG_COMMAND_WRITE_REWRITE_REF
+  BBFG_COMMAND_WRITE_REWRITE_REF,
+  BBFG_COMMAND_REWRITE_HEAD_HISTORY,
+  BBFG_COMMAND_REWRITE_REF
 } BbfgCommand;
 
 typedef struct
 {
   BbfgCommand command;
   const char* path;
+  const char* ref_name;
   const char* repo_path;
 } BbfgOptions;
 

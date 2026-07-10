@@ -33,6 +33,8 @@ Current commands:
 ./build/bbfg --remove-head-entry path/to/file .
 ./build/bbfg --commit-without-entry path/to/file .
 ./build/bbfg --write-rewrite-ref path/to/file .
+./build/bbfg --rewrite-head-history path/to/file .
+./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
 ```
 
 Git equivalents:
@@ -50,3 +52,5 @@ Git equivalents:
 | `./build/bbfg --remove-head-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree` |
 | `./build/bbfg --commit-without-entry path/to/file .` | `git -C . read-tree HEAD && git -C . rm --cached path/to/file && git -C . write-tree && git -C . commit-tree TREE -p HEAD` |
 | `./build/bbfg --write-rewrite-ref path/to/file .` | `git -C . update-ref refs/heads/bbfg-rewrite COMMIT` |
+| `./build/bbfg --rewrite-head-history path/to/file .` | `git -C . rev-list --topo-order --reverse HEAD`, then `git commit-tree` for each commit |
+| `./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .` | rewrite commits reachable from `refs/heads/main`, then `git update-ref refs/heads/main COMMIT` |

@@ -28,6 +28,15 @@ bbfg_write_rewrite_ref(git_repository* repo,
                        const char* repo_path,
                        const char* path);
 int
+bbfg_rewrite_head_history_ref(git_repository* repo,
+                              const char* repo_path,
+                              const char* path);
+int
+bbfg_rewrite_ref(git_repository* repo,
+                 const char* repo_path,
+                 const char* ref_name,
+                 const char* path);
+int
 bbfg_print_refs(git_repository* repo, const char* repo_path);
 
 #endif
