@@ -15,6 +15,7 @@ WARNINGS := \
 	-Wstrict-prototypes \
 	-Wmissing-prototypes \
 	-Wold-style-definition \
+	-Wnull-dereference \
 	-Wvla \
 	-Werror=implicit-function-declaration \
 	-Werror=implicit-int
@@ -25,6 +26,13 @@ CFLAGS := -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) -MMD -MP
 LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
+TEST_SRC := $(wildcard tests/*.c)
+TEST_OBJ := $(TEST_SRC:tests/%.c=$(BUILD_DIR)/tests/%.o)
+TEST_DEP := $(TEST_OBJ:.o=.d)
+TEST_TARGET := $(BUILD_DIR)/$(TARGET)-tests
+CRITERION_CFLAGS := $(shell $(PKG_CONFIG) --cflags criterion)
+CRITERION_CPPFLAGS := $(patsubst -I%,-isystem %,$(CRITERION_CFLAGS))
+CRITERION_LDLIBS := $(shell $(PKG_CONFIG) --libs criterion)
 
 .PHONY: all clean compdb format test tidy
 
@@ -37,14 +45,21 @@ $(BUILD_DIR)/%.o: src/%.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-format:
-	clang-format -i src/*.[ch]
+$(BUILD_DIR)/tests/%.o: tests/%.c
+	@mkdir -p $(BUILD_DIR)/tests
+	$(CC) $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-test: all
-	tests/smoke.sh ./$(BUILD_DIR)/$(TARGET)
+$(TEST_TARGET): $(TEST_OBJ)
+	$(CC) $(TEST_OBJ) $(CRITERION_LDLIBS) -o $@
+
+format:
+	clang-format -i src/*.[ch] tests/*.[ch]
+
+test: all $(TEST_TARGET)
+	BBFG=./$(BUILD_DIR)/$(TARGET) $(TEST_TARGET)
 
 tidy:
-	clang-tidy $(SRC) -- $(CPPFLAGS) $(CFLAGS)
+	clang-tidy $(SRC) $(TEST_SRC) -- $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -52,4 +67,4 @@ clean:
 compdb:
 	bear -- make clean all
 
--include $(DEP)
+-include $(DEP) $(TEST_DEP)

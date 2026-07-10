@@ -11,7 +11,9 @@ Build:
 make
 ```
 
-Run the smoke test:
+Test dependency: Criterion.
+
+Run the tests:
 
 ```sh
 make test
