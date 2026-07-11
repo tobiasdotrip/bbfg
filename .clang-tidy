@@ -9,3 +9,5 @@ Checks: >
   readability-misleading-indentation,
   readability-redundant-control-flow
 WarningsAsErrors: ""
+CheckOptions:
+  readability-function-cognitive-complexity.IgnoreMacros: true

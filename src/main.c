@@ -8,6 +8,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static void
+init_filter(BbfgFilter* filter, const BbfgOptions* options)
+{
+  if (options->delete_mode == BBFG_DELETE_FILENAME) {
+    bbfg_filter_delete_filename(filter, options->path);
+  } else {
+    bbfg_filter_delete_path(filter, options->path);
+  }
+}
+
 int
 main(int argc, char** argv)
 {
@@ -70,27 +80,27 @@ main(int argc, char** argv)
       break;
     case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY: {
       BbfgFilter filter;
-      bbfg_filter_delete_path(&filter, options.path);
+      init_filter(&filter, &options);
       command_result =
         bbfg_commit_without_tree_entry(repo, options.repo_path, &filter);
       break;
     }
     case BBFG_COMMAND_WRITE_REWRITE_REF: {
       BbfgFilter filter;
-      bbfg_filter_delete_path(&filter, options.path);
+      init_filter(&filter, &options);
       command_result = bbfg_write_rewrite_ref(repo, options.repo_path, &filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_HEAD_HISTORY: {
       BbfgFilter filter;
-      bbfg_filter_delete_path(&filter, options.path);
+      init_filter(&filter, &options);
       command_result =
         bbfg_rewrite_head_history_ref(repo, options.repo_path, &filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_REF: {
       BbfgFilter filter;
-      bbfg_filter_delete_path(&filter, options.path);
+      init_filter(&filter, &options);
       BbfgRewriteRef ref;
       ref.name = options.ref_name;
       command_result = bbfg_rewrite_ref(repo, options.repo_path, &ref, &filter);
@@ -98,7 +108,7 @@ main(int argc, char** argv)
     }
     case BBFG_COMMAND_REWRITE_REFS: {
       BbfgFilter filter;
-      bbfg_filter_delete_path(&filter, options.path);
+      init_filter(&filter, &options);
       command_result = bbfg_rewrite_refs(repo, options.repo_path, &filter);
       break;
     }

@@ -5,7 +5,8 @@
 
 typedef enum
 {
-  BBFG_FILTER_DELETE_PATH
+  BBFG_FILTER_DELETE_PATH,
+  BBFG_FILTER_DELETE_FILENAME
 } BbfgFilterKind;
 
 typedef struct
@@ -16,8 +17,11 @@ typedef struct
 
 void
 bbfg_filter_delete_path(BbfgFilter* filter, const char* path);
+void
+bbfg_filter_delete_filename(BbfgFilter* filter, const char* filename);
 int
 bbfg_filter_matches_tree(int* matches,
+                         git_repository* repo,
                          const BbfgFilter* filter,
                          git_tree* tree);
 int

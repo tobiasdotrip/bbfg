@@ -49,13 +49,13 @@ original_head=$(git -C "$template" rev-parse refs/heads/main)
 
 printf 'rewrite %s commits\n' "$commits"
 /usr/bin/time -p ./build/bbfg \
-  --rewrite-refs --delete delete.txt "$tmpdir/changed.git" >/dev/null
+  --rewrite-refs --delete-files delete.txt "$tmpdir/changed.git" >/dev/null
 test -z "$(git -C "$tmpdir/changed.git" ls-tree -r --name-only HEAD -- delete.txt)"
 git -C "$tmpdir/changed.git" fsck --full --no-progress >/dev/null
 
 printf 'scan %s unchanged commits\n' "$commits"
 /usr/bin/time -p ./build/bbfg \
-  --rewrite-refs --delete absent.txt "$tmpdir/unchanged.git" >/dev/null
+  --rewrite-refs --delete-files absent.txt "$tmpdir/unchanged.git" >/dev/null
 test "$original_head" = \
   "$(git -C "$tmpdir/unchanged.git" rev-parse refs/heads/main)"
 

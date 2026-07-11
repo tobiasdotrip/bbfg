@@ -55,7 +55,8 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "[-d|--remove-head-entry path] [-C|--commit-without-entry path] "
           "[-W|--write-rewrite-ref path] "
           "[-H|--rewrite-head-history path] "
-          "[--rewrite-ref ref --delete path] [--rewrite-refs --delete path] "
+          "[--rewrite-ref ref --delete path|--delete-files filename] "
+          "[--rewrite-refs --delete path|--delete-files filename] "
           "<repo>\n",
           program_name);
 }
@@ -107,10 +108,15 @@ fill_long_options(struct option* long_options)
   long_options[command_options_count + 1].flag = NULL;
   long_options[command_options_count + 1].val = 'D';
 
-  long_options[command_options_count + 2].name = NULL;
-  long_options[command_options_count + 2].has_arg = 0;
+  long_options[command_options_count + 2].name = "delete-files";
+  long_options[command_options_count + 2].has_arg = required_argument;
   long_options[command_options_count + 2].flag = NULL;
-  long_options[command_options_count + 2].val = 0;
+  long_options[command_options_count + 2].val = 'F';
+
+  long_options[command_options_count + 3].name = NULL;
+  long_options[command_options_count + 3].has_arg = 0;
+  long_options[command_options_count + 3].flag = NULL;
+  long_options[command_options_count + 3].val = 0;
 }
 
 static int
@@ -133,31 +139,35 @@ int
 bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
 {
   struct option
-    long_options[sizeof(command_options) / sizeof(command_options[0]) + 3];
+    long_options[sizeof(command_options) / sizeof(command_options[0]) + 4];
   int option;
   int delete_option = 0;
 
   fill_long_options(long_options);
   options->command = BBFG_COMMAND_OPEN_REPO;
+  options->delete_mode = BBFG_DELETE_PATH;
   options->path = NULL;
   options->ref_name = NULL;
   options->repo_path = NULL;
   opterr = 0;
 
   while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:W:H:u:UD:", long_options, NULL)) != -1) {
+            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:", long_options, NULL)) !=
+         -1) {
     const BbfgCommandOption* command_option;
 
     if (option == 'h') {
       return 1;
     }
 
-    if (option == 'D') {
+    if (option == 'D' || option == 'F') {
       if (options->path != NULL) {
         return -1;
       }
 
       options->path = optarg;
+      options->delete_mode =
+        option == 'F' ? BBFG_DELETE_FILENAME : BBFG_DELETE_PATH;
       delete_option = 1;
       continue;
     }

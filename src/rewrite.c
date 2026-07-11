@@ -137,7 +137,7 @@ filter_commit_tree(git_oid* rewritten_tree_id,
   }
 
   int matches = 0;
-  int result = bbfg_filter_matches_tree(&matches, filter, tree);
+  int result = bbfg_filter_matches_tree(&matches, repo, filter, tree);
   if (result == 0 && !matches &&
       missing_path_mode == BBFG_MISSING_PATH_IS_UNCHANGED) {
     git_oid_cpy(rewritten_tree_id, original_tree_id);

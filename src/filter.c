@@ -9,8 +9,18 @@ bbfg_filter_delete_path(BbfgFilter* filter, const char* path)
   filter->path = path;
 }
 
+void
+bbfg_filter_delete_filename(BbfgFilter* filter, const char* filename)
+{
+  filter->kind = BBFG_FILTER_DELETE_FILENAME;
+  filter->path = filename;
+}
+
 int
-bbfg_filter_matches_tree(int* matches, const BbfgFilter* filter, git_tree* tree)
+bbfg_filter_matches_tree(int* matches,
+                         git_repository* repo,
+                         const BbfgFilter* filter,
+                         git_tree* tree)
 {
   if (filter->kind == BBFG_FILTER_DELETE_PATH) {
     git_tree_entry* entry = NULL;
@@ -29,6 +39,10 @@ bbfg_filter_matches_tree(int* matches, const BbfgFilter* filter, git_tree* tree)
     return 0;
   }
 
+  if (filter->kind == BBFG_FILTER_DELETE_FILENAME) {
+    return bbfg_tree_contains_filename(matches, repo, tree, filter->path);
+  }
+
   return -1;
 }
 
@@ -40,6 +54,11 @@ bbfg_filter_apply_tree(git_oid* rewritten_tree_id,
 {
   if (filter->kind == BBFG_FILTER_DELETE_PATH) {
     return bbfg_tree_remove_path(rewritten_tree_id, repo, tree, filter->path);
+  }
+
+  if (filter->kind == BBFG_FILTER_DELETE_FILENAME) {
+    return bbfg_tree_remove_filename(
+      rewritten_tree_id, repo, tree, filter->path);
   }
 
   return -1;

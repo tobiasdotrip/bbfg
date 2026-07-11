@@ -34,10 +34,10 @@ not included.
 
 | tool | real | user | sys |
 | --- | ---: | ---: | ---: |
-| BBFG | 0.71 s | 0.60 s | 0.43 s |
-| BFG | 4.74 s | 3.51 s | 3.58 s |
+| BBFG | 0.70 s | 0.60 s | 0.44 s |
+| BFG | 5.04 s | 3.70 s | 3.76 s |
 
-BBFG was 6.68x faster in this run. BFG's CPU time is higher than its elapsed
+BBFG was 7.20x faster in this run. BFG's CPU time is higher than its elapsed
 time because the rewrite uses parallel workers.
 
 Current commands:
@@ -57,6 +57,7 @@ Current commands:
 ./build/bbfg --rewrite-head-history path/to/file .
 ./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
 ./build/bbfg --rewrite-refs --delete path/to/file .
+./build/bbfg --rewrite-refs --delete-files filename .
 ```
 
 Git equivalents:
@@ -77,3 +78,4 @@ Git equivalents:
 | `./build/bbfg --rewrite-head-history path/to/file .` | `git -C . rev-list --topo-order --reverse HEAD`, then `git commit-tree` for each commit |
 | `./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .` | rewrite commits reachable from `refs/heads/main`, then `git update-ref refs/heads/main COMMIT` |
 | `./build/bbfg --rewrite-refs --delete path/to/file .` | `git -C . for-each-ref refs/heads refs/tags`, rewrite each direct commit ref, then `git update-ref REF COMMIT` |
+| `./build/bbfg --rewrite-refs --delete-files filename .` | `git filter-repo --invert-paths --path filename --use-base-name` |
