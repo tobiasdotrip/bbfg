@@ -10,6 +10,7 @@ bbfg_filter_init(BbfgFilter* filter)
   filter->rules = NULL;
   filter->count = 0;
   filter->capacity = 0;
+  filter->protect_blobs = 1;
 }
 
 void
@@ -19,6 +20,7 @@ bbfg_filter_dispose(BbfgFilter* filter)
   filter->rules = NULL;
   filter->count = 0;
   filter->capacity = 0;
+  filter->protect_blobs = 1;
 }
 
 static int

@@ -212,6 +212,17 @@ bbfg_test_add_large_file(const char* repo)
 }
 
 void
+bbfg_test_add_large_file_history(const char* repo)
+{
+  bbfg_test_add_large_file(repo);
+  write_repo_file(repo, (TestFile){ "file.txt", "after large file\n" });
+  cr_assert_eq(bbfg_test_run_command("git -C %s add file.txt", repo), 0);
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s commit -q -m 'After large file'", repo),
+    0);
+}
+
+void
 bbfg_test_init_repo(char* tmpdir,
                     size_t tmpdir_size,
                     char* repo,

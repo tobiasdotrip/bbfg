@@ -48,6 +48,12 @@ static const BbfgCommandOption command_options[] = {
 static const size_t command_options_count =
   sizeof(command_options) / sizeof(command_options[0]);
 
+enum
+{
+  BBFG_OPTION_HAS_FILTER = 1 << 0,
+  BBFG_OPTION_NO_BLOB_PROTECTION = 1 << 1
+};
+
 void
 bbfg_print_usage(FILE* stream, const char* program_name)
 {
@@ -57,11 +63,11 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "[-w|--walk-rewrite-commits] [-B|--rebuild-head-tree] "
           "[-d|--remove-head-entry path] [-C|--commit-without-entry path] "
           "[-W|--write-rewrite-ref path] "
-          "[-H|--rewrite-head-history path] "
+          "[-H|--rewrite-head-history path [--no-blob-protection]] "
           "[--rewrite-ref ref --delete path|--delete-files filename|"
-          "--strip-blobs-bigger-than size] "
+          "--strip-blobs-bigger-than size] [--no-blob-protection] "
           "[--rewrite-refs --delete path|--delete-files filename|"
-          "--strip-blobs-bigger-than size] "
+          "--strip-blobs-bigger-than size] [--no-blob-protection] "
           "<repo>\n",
           program_name);
 }
@@ -147,18 +153,36 @@ fill_long_options(struct option* long_options)
   long_options[command_options_count + 3].flag = NULL;
   long_options[command_options_count + 3].val = 'S';
 
-  long_options[command_options_count + 4].name = NULL;
-  long_options[command_options_count + 4].has_arg = 0;
+  long_options[command_options_count + 4].name = "no-blob-protection";
+  long_options[command_options_count + 4].has_arg = no_argument;
   long_options[command_options_count + 4].flag = NULL;
-  long_options[command_options_count + 4].val = 0;
+  long_options[command_options_count + 4].val = 'N';
+
+  long_options[command_options_count + 5].name = NULL;
+  long_options[command_options_count + 5].has_arg = 0;
+  long_options[command_options_count + 5].flag = NULL;
+  long_options[command_options_count + 5].val = 0;
 }
 
 static int
-validate_options(const BbfgOptions* options, int delete_option)
+command_supports_blob_protection(BbfgCommand command)
 {
+  return command == BBFG_COMMAND_REWRITE_HEAD_HISTORY ||
+         command == BBFG_COMMAND_REWRITE_REF ||
+         command == BBFG_COMMAND_REWRITE_REFS;
+}
+
+static int
+validate_options(const BbfgOptions* options, int option_flags)
+{
+  if ((option_flags & BBFG_OPTION_NO_BLOB_PROTECTION) != 0 &&
+      !command_supports_blob_protection(options->command)) {
+    return 0;
+  }
+
   if (options->command == BBFG_COMMAND_REWRITE_REF ||
       options->command == BBFG_COMMAND_REWRITE_REFS) {
-    if (!delete_option) {
+    if ((option_flags & BBFG_OPTION_HAS_FILTER) == 0) {
       return 0;
     }
 
@@ -166,7 +190,7 @@ validate_options(const BbfgOptions* options, int delete_option)
            options->ref_name != NULL;
   }
 
-  return delete_option == 0;
+  return (option_flags & BBFG_OPTION_HAS_FILTER) == 0;
 }
 
 static int
@@ -223,7 +247,7 @@ static int
 parse_filter_option(BbfgOptions* options,
                     int option,
                     const char* argument,
-                    int* delete_option)
+                    int* option_flags)
 {
   int result;
   if (option == 'D') {
@@ -243,7 +267,7 @@ parse_filter_option(BbfgOptions* options,
     return -1;
   }
 
-  *delete_option = 1;
+  *option_flags |= BBFG_OPTION_HAS_FILTER;
   return 0;
 }
 
@@ -270,28 +294,34 @@ static int
 parse_option(BbfgOptions* options,
              int option,
              const char* argument,
-             int* delete_option)
+             int* option_flags)
 {
   if (option == 'h') {
     return 1;
   }
 
+  if (option == 'N') {
+    options->filter.protect_blobs = 0;
+    *option_flags |= BBFG_OPTION_NO_BLOB_PROTECTION;
+    return 0;
+  }
+
   if (option == 'D' || option == 'F' || option == 'S') {
-    return parse_filter_option(options, option, argument, delete_option);
+    return parse_filter_option(options, option, argument, option_flags);
   }
 
   return parse_command_option(options, option, argument);
 }
 
 static int
-finish_options(BbfgOptions* options, int argc, char** argv, int delete_option)
+finish_options(BbfgOptions* options, int argc, char** argv, int option_flags)
 {
   if (optind + 1 != argc) {
     return -1;
   }
 
   options->repo_path = argv[optind];
-  if (!validate_options(options, delete_option)) {
+  if (!validate_options(options, option_flags)) {
     return -1;
   }
 
@@ -302,22 +332,22 @@ int
 bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
 {
   struct option
-    long_options[sizeof(command_options) / sizeof(command_options[0]) + 5];
+    long_options[sizeof(command_options) / sizeof(command_options[0]) + 6];
   int option;
-  int delete_option = 0;
+  int option_flags = 0;
 
   fill_long_options(long_options);
   init_options(options);
   opterr = 0;
 
   while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:S:", long_options, NULL)) !=
+            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:S:N", long_options, NULL)) !=
          -1) {
-    int result = parse_option(options, option, optarg, &delete_option);
+    int result = parse_option(options, option, optarg, &option_flags);
     if (result != 0) {
       return result;
     }
   }
 
-  return finish_options(options, argc, argv, delete_option);
+  return finish_options(options, argc, argv, option_flags);
 }

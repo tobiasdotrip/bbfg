@@ -36,6 +36,9 @@ void
 bbfg_test_add_large_file(const char* repo);
 
 void
+bbfg_test_add_large_file_history(const char* repo);
+
+void
 bbfg_test_cleanup(const char* tmpdir);
 
 #endif

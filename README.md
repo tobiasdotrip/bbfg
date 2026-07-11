@@ -58,6 +58,14 @@ Only direct refs under `refs/heads` and `refs/tags` are updated. Symbolic refs
 such as `HEAD`, remote-tracking refs, and refs that do not peel to a commit are
 not rewrite targets.
 
+History rewrites protect the tree of each rewritten tip by default. Older
+commits are filtered, while a protected tip keeps its tree; its commit ID can
+still change because its parents were rewritten. With `--rewrite-refs`, this
+rule applies independently to every branch and tag tip in the rewrite set.
+Use `--no-blob-protection` to filter the tips too. This option is available on
+history rewrite commands only; the one-commit commands are explicit tree
+operations and do not use tip protection.
+
 Filters are additive and can be repeated in the same command:
 
 ```sh
@@ -67,9 +75,22 @@ Filters are additive and can be repeated in the same command:
   .
 ```
 
+For a complete rewrite that also filters the current tips:
+
+```sh
+./build/bbfg --rewrite-refs \
+  --strip-blobs-bigger-than 100M \
+  --no-blob-protection \
+  .
+```
+
 `--delete` removes one exact path, `--delete-files` matches a filename at any
 depth, and `--strip-blobs-bigger-than` removes blobs strictly larger than the
 limit. Size suffixes `K`, `M`, `G`, and `T` use base 1024.
+
+Before rewriting, work on a fresh clone or keep a backup. Review the rewritten
+refs before pushing them, and run `git reflog expire` followed by `git gc` only
+when the old objects are no longer needed.
 
 ## Git equivalents
 

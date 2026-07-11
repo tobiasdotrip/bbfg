@@ -24,6 +24,7 @@ typedef struct
   BbfgFilterRule* rules;
   size_t count;
   size_t capacity;
+  int protect_blobs;
 } BbfgFilter;
 
 void

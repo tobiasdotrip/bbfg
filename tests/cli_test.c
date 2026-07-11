@@ -169,7 +169,9 @@ Test(cli, rewrite_history_commands)
   free(actual);
 
   char* history_ref = bbfg_test_read_command(
-    "%s --rewrite-head-history dir/nested.txt %s", bbfg, repo);
+    "%s --rewrite-head-history dir/nested.txt --no-blob-protection %s",
+    bbfg,
+    repo);
   bbfg_test_strip_trailing_newline(history_ref);
   expected =
     bbfg_test_read_command("git -C %s rev-parse refs/heads/bbfg-rewrite", repo);
@@ -216,7 +218,8 @@ Test(cli, rewrite_ref_command)
     bbfg_test_read_command("git -C %s rev-parse refs/heads/target", repo);
   bbfg_test_strip_trailing_newline(target_before);
   char* rewritten_target = bbfg_test_read_command(
-    "%s --rewrite-ref refs/heads/target --delete dir/nested.txt %s",
+    "%s --rewrite-ref refs/heads/target --delete dir/nested.txt "
+    "--no-blob-protection %s",
     bbfg,
     repo);
   bbfg_test_strip_trailing_newline(rewritten_target);
@@ -306,7 +309,10 @@ Test(cli, rewrite_annotated_tag)
     bbfg_test_read_command("git -C %s rev-parse refs/tags/v1", repo);
   bbfg_test_strip_trailing_newline(before_tag);
   char* rewritten = bbfg_test_read_command(
-    "%s --rewrite-ref refs/tags/v1 --delete dir/nested.txt %s", bbfg, repo);
+    "%s --rewrite-ref refs/tags/v1 --delete dir/nested.txt "
+    "--no-blob-protection %s",
+    bbfg,
+    repo);
   bbfg_test_strip_trailing_newline(rewritten);
 
   char* after_tag =
@@ -357,7 +363,7 @@ Test(cli, rewrite_combined_filters)
 
   char* rewritten = bbfg_test_read_command(
     "%s --rewrite-ref refs/heads/main --delete-files nested.txt "
-    "--strip-blobs-bigger-than 1K %s",
+    "--strip-blobs-bigger-than 1K --no-blob-protection %s",
     bbfg,
     repo);
   bbfg_test_strip_trailing_newline(rewritten);
@@ -382,6 +388,91 @@ Test(cli, rewrite_combined_filters)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_protects_tip_blobs)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_large_file_history(repo);
+
+  char* rewritten = bbfg_test_read_command(
+    "%s --rewrite-ref refs/heads/main --strip-blobs-bigger-than 1K %s",
+    bbfg,
+    repo);
+  bbfg_test_strip_trailing_newline(rewritten);
+
+  char* tip_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_not_null(strstr(tip_names, "large.bin"));
+  free(tip_names);
+
+  char* parent_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main^", repo);
+  cr_assert_null(strstr(parent_names, "large.bin"));
+  free(parent_names);
+
+  free(rewritten);
+  bbfg_test_cleanup(tmpdir);
+}
+
+Test(cli, rewrite_no_blob_protection)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_large_file(repo);
+
+  char* rewritten = bbfg_test_read_command(
+    "%s --rewrite-ref refs/heads/main --strip-blobs-bigger-than 1K "
+    "--no-blob-protection %s",
+    bbfg,
+    repo);
+  bbfg_test_strip_trailing_newline(rewritten);
+
+  char* names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_null(strstr(names, "large.bin"));
+  free(names);
+
+  free(rewritten);
+  bbfg_test_cleanup(tmpdir);
+}
+
+Test(cli, rewrite_refs_protects_each_tip)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s branch -q feature HEAD~1", repo), 0);
+  bbfg_test_add_large_file(repo);
+  cr_assert_eq(bbfg_test_run_command("git -C %s checkout -q feature", repo), 0);
+  bbfg_test_add_large_file(repo);
+  cr_assert_eq(bbfg_test_run_command("git -C %s checkout -q main", repo), 0);
+
+  char* output = bbfg_test_read_command(
+    "%s --rewrite-refs --strip-blobs-bigger-than 1K %s", bbfg, repo);
+  free(output);
+
+  char* main_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_not_null(strstr(main_names, "large.bin"));
+  free(main_names);
+
+  char* feature_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/feature", repo);
+  cr_assert_not_null(strstr(feature_names, "large.bin"));
+  free(feature_names);
+
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_merge_history)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
@@ -398,7 +489,10 @@ Test(cli, rewrite_merge_history)
   bbfg_test_strip_trailing_newline(before_target);
 
   char* rewritten = bbfg_test_read_command(
-    "%s --rewrite-ref refs/heads/main --delete dir/nested.txt %s", bbfg, repo);
+    "%s --rewrite-ref refs/heads/main --delete dir/nested.txt "
+    "--no-blob-protection %s",
+    bbfg,
+    repo);
   bbfg_test_strip_trailing_newline(rewritten);
   cr_assert_str_neq(rewritten, before_target);
 
@@ -443,7 +537,9 @@ Test(cli, rewrite_refs_command)
     repo,
     repo);
   char* rewritten_refs = bbfg_test_read_command(
-    "%s --rewrite-refs --delete dir/nested.txt %s", bbfg, repo);
+    "%s --rewrite-refs --delete dir/nested.txt --no-blob-protection %s",
+    bbfg,
+    repo);
   char* expected = bbfg_test_read_command(
     "git -C %s for-each-ref --format='%%(refname) %%(objectname)' "
     "refs/heads refs/tags",
@@ -492,7 +588,9 @@ Test(cli, rewrite_merge_refs)
   bbfg_test_strip_trailing_newline(before_tag);
 
   char* output = bbfg_test_read_command(
-    "%s --rewrite-refs --delete dir/nested.txt %s", bbfg, repo);
+    "%s --rewrite-refs --delete dir/nested.txt --no-blob-protection %s",
+    bbfg,
+    repo);
   char* after_feature =
     bbfg_test_read_command("git -C %s rev-parse refs/heads/feature", repo);
   bbfg_test_strip_trailing_newline(after_feature);
@@ -540,7 +638,8 @@ Test(cli, delete_files_by_name)
   bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
 
   char* rewritten = bbfg_test_read_command(
-    "%s --rewrite-ref refs/heads/main --delete-files nested.txt %s",
+    "%s --rewrite-ref refs/heads/main --delete-files nested.txt "
+    "--no-blob-protection %s",
     bbfg,
     repo);
   bbfg_test_strip_trailing_newline(rewritten);
@@ -561,7 +660,8 @@ Test(cli, delete_files_by_name)
     bbfg_test_read_command("git -C %s rev-parse refs/heads/main", repo);
   bbfg_test_strip_trailing_newline(before_noop);
   char* noop = bbfg_test_read_command(
-    "%s --rewrite-ref refs/heads/main --delete-files absent.txt %s",
+    "%s --rewrite-ref refs/heads/main --delete-files absent.txt "
+    "--no-blob-protection %s",
     bbfg,
     repo);
   bbfg_test_strip_trailing_newline(noop);

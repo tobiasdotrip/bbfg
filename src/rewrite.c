@@ -25,7 +25,9 @@ rewrite_history_from_walk(RewriteState* state,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
-                          const BbfgFilter* filter);
+                          const BbfgFilter* filter,
+                          const git_oid* protected_commit_ids,
+                          size_t protected_commit_count);
 
 static int
 create_rewritten_tag(git_oid* rewritten_ref_id,
@@ -42,6 +44,22 @@ free_commit_array(const git_commit** commits, size_t count)
   }
 
   free((void*)commits);
+}
+
+static int
+oid_is_protected(const git_oid* oid,
+                 const git_oid* protected_commit_ids,
+                 size_t protected_commit_count)
+{
+  size_t i;
+
+  for (i = 0; i < protected_commit_count; i++) {
+    if (git_oid_equal(oid, &protected_commit_ids[i])) {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 static int
@@ -163,10 +181,17 @@ filter_commit_tree(git_oid* rewritten_tree_id,
                    const char* repo_path,
                    const BbfgFilter* filter,
                    MissingPathMode missing_path_mode,
-                   BbfgOidMap* trees)
+                   BbfgOidMap* trees,
+                   const git_oid* protected_commit_ids,
+                   size_t protected_commit_count)
 {
   const git_oid* original_tree_id = git_commit_tree_id(commit);
-  if (copy_cached_tree(rewritten_tree_id, original_tree_id, trees)) {
+  int protect_tree =
+    filter->protect_blobs && oid_is_protected(git_commit_id(commit),
+                                              protected_commit_ids,
+                                              protected_commit_count);
+  if (!protect_tree &&
+      copy_cached_tree(rewritten_tree_id, original_tree_id, trees)) {
     return 0;
   }
 
@@ -174,6 +199,12 @@ filter_commit_tree(git_oid* rewritten_tree_id,
   if (git_commit_tree(&tree, commit) < 0) {
     bbfg_print_git_error("could not read commit tree", repo_path);
     return -1;
+  }
+
+  if (protect_tree) {
+    git_oid_cpy(rewritten_tree_id, original_tree_id);
+    git_tree_free(tree);
+    return 0;
   }
 
   int matches = 0;
@@ -229,7 +260,9 @@ create_rewritten_commit(git_oid* rewritten_commit_id,
                         MissingPathMode missing_path_mode,
                         const git_commit** parents,
                         size_t parent_count,
-                        BbfgOidMap* trees)
+                        BbfgOidMap* trees,
+                        const git_oid* protected_commit_ids,
+                        size_t protected_commit_count)
 {
   git_oid rewritten_tree_id;
   if (filter_commit_tree(&rewritten_tree_id,
@@ -238,7 +271,9 @@ create_rewritten_commit(git_oid* rewritten_commit_id,
                          repo_path,
                          filter,
                          missing_path_mode,
-                         trees) < 0) {
+                         trees,
+                         protected_commit_ids,
+                         protected_commit_count) < 0) {
     return -1;
   }
 
@@ -300,7 +335,9 @@ bbfg_rewrite_head_commit(git_oid* rewritten_commit_id,
                                        BBFG_MISSING_PATH_IS_ERROR,
                                        parents,
                                        parent_count,
-                                       NULL);
+                                       NULL,
+                                       NULL,
+                                       0);
 
   free_commit_array(parents, parent_count);
   git_commit_free(head_commit);
@@ -336,7 +373,16 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     return -1;
   }
 
-  int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
+  const git_oid* protected_commit_ids =
+    filter->protect_blobs ? git_commit_id(start_commit) : NULL;
+  size_t protected_commit_count = filter->protect_blobs ? 1 : 0;
+  int result = rewrite_history_from_walk(&state,
+                                         repo,
+                                         repo_path,
+                                         walk,
+                                         filter,
+                                         protected_commit_ids,
+                                         protected_commit_count);
   if (result == 0) {
     const git_oid* rewritten_tip_id =
       bbfg_oid_map_get(&state.commits, git_commit_id(start_commit));
@@ -538,6 +584,8 @@ rewrite_one_commit(RewriteState* state,
                    git_repository* repo,
                    const char* repo_path,
                    const BbfgFilter* filter,
+                   const git_oid* protected_commit_ids,
+                   size_t protected_commit_count,
                    const git_oid* old_id)
 {
   git_commit* commit = NULL;
@@ -564,7 +612,9 @@ rewrite_one_commit(RewriteState* state,
                                        BBFG_MISSING_PATH_IS_UNCHANGED,
                                        parents,
                                        parent_count,
-                                       &state->trees);
+                                       &state->trees,
+                                       protected_commit_ids,
+                                       protected_commit_count);
   if (result == 0) {
     result = bbfg_oid_map_put(&state->commits, old_id, &new_id);
   }
@@ -579,12 +629,20 @@ rewrite_history_from_walk(RewriteState* state,
                           git_repository* repo,
                           const char* repo_path,
                           git_revwalk* walk,
-                          const BbfgFilter* filter)
+                          const BbfgFilter* filter,
+                          const git_oid* protected_commit_ids,
+                          size_t protected_commit_count)
 {
   git_oid old_id;
   int result = git_revwalk_next(&old_id, walk);
   while (result == 0) {
-    if (rewrite_one_commit(state, repo, repo_path, filter, &old_id) < 0) {
+    if (rewrite_one_commit(state,
+                           repo,
+                           repo_path,
+                           filter,
+                           protected_commit_ids,
+                           protected_commit_count,
+                           &old_id) < 0) {
       result = -1;
       break;
     }
@@ -681,7 +739,13 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
     return -1;
   }
 
-  int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
+  int result = rewrite_history_from_walk(&state,
+                                         repo,
+                                         repo_path,
+                                         walk,
+                                         filter,
+                                         filter->protect_blobs ? tip_ids : NULL,
+                                         filter->protect_blobs ? ref_count : 0);
   if (result == 0) {
     result =
       copy_rewritten_ref_tips(refs, repo, tip_ids, &state.commits, ref_count);
