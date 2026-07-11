@@ -175,6 +175,22 @@ create_second_commit(const char* repo)
 }
 
 void
+bbfg_test_add_merge_history(const char* repo)
+{
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s branch -q feature HEAD~1", repo), 0);
+  cr_assert_eq(bbfg_test_run_command("git -C %s checkout -q feature", repo), 0);
+  write_repo_file(repo, (TestFile){ "feature.txt", "feature\n" });
+  cr_assert_eq(bbfg_test_run_command("git -C %s add feature.txt", repo), 0);
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s commit -q -m 'Feature commit'", repo), 0);
+  cr_assert_eq(bbfg_test_run_command("git -C %s checkout -q main", repo), 0);
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s merge --no-ff -q feature -m 'Merge feature'", repo),
+               0);
+}
+
+void
 bbfg_test_init_repo(char* tmpdir,
                     size_t tmpdir_size,
                     char* repo,

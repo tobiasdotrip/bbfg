@@ -27,6 +27,9 @@ bbfg_test_init_repo(char* tmpdir,
                     size_t repo_size);
 
 void
+bbfg_test_add_merge_history(const char* repo);
+
+void
 bbfg_test_cleanup(const char* tmpdir);
 
 #endif

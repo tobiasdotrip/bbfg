@@ -249,6 +249,52 @@ Test(cli, rewrite_ref_command)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_merge_history)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_merge_history(repo);
+
+  char* before_count =
+    bbfg_test_read_command("git -C %s rev-list --count refs/heads/main", repo);
+  char* before_target =
+    bbfg_test_read_command("git -C %s rev-parse refs/heads/main", repo);
+  bbfg_test_strip_trailing_newline(before_target);
+
+  char* rewritten = bbfg_test_read_command(
+    "%s --rewrite-ref refs/heads/main --delete dir/nested.txt %s", bbfg, repo);
+  bbfg_test_strip_trailing_newline(rewritten);
+  cr_assert_str_neq(rewritten, before_target);
+
+  char* actual_count =
+    bbfg_test_read_command("git -C %s rev-list --count refs/heads/main", repo);
+  cr_assert_str_eq(actual_count, before_count);
+  free(actual_count);
+  free(before_count);
+
+  char* names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_null(strstr(names, "dir/nested.txt"));
+  cr_assert_not_null(strstr(names, "feature.txt"));
+  free(names);
+
+  char* feature_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/feature", repo);
+  cr_assert_not_null(strstr(feature_names, "dir/nested.txt"));
+  free(feature_names);
+
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s fsck --full --no-progress >/dev/null", repo),
+               0);
+
+  free(rewritten);
+  free(before_target);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_refs_command)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
@@ -295,6 +341,48 @@ Test(cli, rewrite_refs_command)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_merge_refs)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_merge_history(repo);
+
+  char* before_feature =
+    bbfg_test_read_command("git -C %s rev-parse refs/heads/feature", repo);
+  bbfg_test_strip_trailing_newline(before_feature);
+
+  char* output = bbfg_test_read_command(
+    "%s --rewrite-refs --delete dir/nested.txt %s", bbfg, repo);
+  char* after_feature =
+    bbfg_test_read_command("git -C %s rev-parse refs/heads/feature", repo);
+  bbfg_test_strip_trailing_newline(after_feature);
+  cr_assert_str_neq(after_feature, before_feature);
+
+  char* main_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_null(strstr(main_names, "dir/nested.txt"));
+  cr_assert_not_null(strstr(main_names, "feature.txt"));
+  free(main_names);
+
+  char* feature_names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/feature", repo);
+  cr_assert_null(strstr(feature_names, "dir/nested.txt"));
+  cr_assert_not_null(strstr(feature_names, "feature.txt"));
+  free(feature_names);
+
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s fsck --full --no-progress >/dev/null", repo),
+               0);
+
+  free(after_feature);
+  free(before_feature);
+  free(output);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, delete_files_by_name)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
@@ -315,6 +403,24 @@ Test(cli, delete_files_by_name)
   cr_assert_null(strstr(names, "nested.txt"));
   cr_assert_not_null(strstr(names, "file.txt"));
 
+  char* directories =
+    bbfg_test_read_command("git -C %s ls-tree -d --name-only HEAD", repo);
+  cr_assert_null(strstr(directories, "dir"));
+  cr_assert_null(strstr(directories, "other"));
+  free(directories);
+
+  char* before_noop =
+    bbfg_test_read_command("git -C %s rev-parse refs/heads/main", repo);
+  bbfg_test_strip_trailing_newline(before_noop);
+  char* noop = bbfg_test_read_command(
+    "%s --rewrite-ref refs/heads/main --delete-files absent.txt %s",
+    bbfg,
+    repo);
+  bbfg_test_strip_trailing_newline(noop);
+  cr_assert_str_eq(noop, before_noop);
+
+  free(noop);
+  free(before_noop);
   free(rewritten);
   free(names);
   bbfg_test_cleanup(tmpdir);

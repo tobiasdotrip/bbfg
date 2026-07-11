@@ -22,7 +22,9 @@ WARNINGS := \
 
 DEBUGFLAGS ?= -g
 OPTFLAGS ?= -O0
-CFLAGS := -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) -MMD -MP
+SANITIZER_FLAGS ?=
+LDFLAGS ?=
+CFLAGS := -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) $(SANITIZER_FLAGS) -MMD -MP
 LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
@@ -33,8 +35,9 @@ TEST_TARGET := $(BUILD_DIR)/$(TARGET)-tests
 CRITERION_CFLAGS := $(shell $(PKG_CONFIG) --cflags criterion)
 CRITERION_CPPFLAGS := $(patsubst -I%,-isystem %,$(CRITERION_CFLAGS))
 CRITERION_LDLIBS := $(shell $(PKG_CONFIG) --libs criterion)
+TEST_ARGS ?=
 
-.PHONY: all benchmark clean compdb format release test tidy
+.PHONY: all benchmark clean compdb format release test test-sanitize tidy
 
 all: $(BUILD_DIR)/$(TARGET)
 
@@ -46,7 +49,7 @@ benchmark: release
 	./bench/rewrite.sh
 
 $(BUILD_DIR)/$(TARGET): $(OBJ)
-	$(CC) $(OBJ) $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $(OBJ) $(LDLIBS) -o $@
 
 $(BUILD_DIR)/%.o: src/%.c
 	@mkdir -p $(BUILD_DIR)
@@ -57,13 +60,18 @@ $(BUILD_DIR)/tests/%.o: tests/%.c
 	$(CC) $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(TEST_TARGET): $(TEST_OBJ)
-	$(CC) $(TEST_OBJ) $(CRITERION_LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $(TEST_OBJ) $(CRITERION_LDLIBS) -o $@
 
 format:
 	clang-format -i src/*.[ch] tests/*.[ch]
 
 test: all $(TEST_TARGET)
-	BBFG=./$(BUILD_DIR)/$(TARGET) $(TEST_TARGET)
+	BBFG=./$(BUILD_DIR)/$(TARGET) $(TEST_TARGET) $(TEST_ARGS)
+
+test-sanitize:
+	$(MAKE) clean
+	$(MAKE) SANITIZER_FLAGS='-fsanitize=address,undefined' \
+		LDFLAGS='-fsanitize=address,undefined' DEBUGFLAGS=-g OPTFLAGS=-O1 test
 
 tidy:
 	clang-tidy $(SRC) $(TEST_SRC) -- $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS)

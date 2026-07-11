@@ -18,6 +18,8 @@ Run the tests:
 
 ```sh
 make test
+make test TEST_ARGS='--filter=cli/rewrite_merge_history'
+make test-sanitize
 ```
 
 Run the rewrite benchmark:
