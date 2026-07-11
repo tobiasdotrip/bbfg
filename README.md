@@ -1,48 +1,30 @@
 # bbfg
 
-`bbfg` is a small C rewrite experiment inspired by BFG Repo-Cleaner.
+`bbfg` is a small C99/libgit2 rewrite tool inspired by BFG Repo-Cleaner.
 
-For now it prints refs and object ids, rebuilds HEAD trees, and can create a
-rewritten commit without moving any ref.
+It can inspect a repository, rebuild trees, rewrite commit history, remove
+paths or filenames, strip large blobs, and update local branches and annotated
+tags.
 
-Build:
+## Build
+
+The build uses a Makefile. `libgit2` is required through `pkg-config`.
+Criterion is required for the test target.
 
 ```sh
 make
 make release
-```
-
-Test dependency: Criterion.
-
-Run the tests:
-
-```sh
 make test
-make test TEST_ARGS='--filter=cli/rewrite_merge_history'
+make test TEST_ARGS='--filter=cli/rewrite_combined_filters'
 make test-sanitize
+make tidy
+make format
+make compdb
 ```
 
-Run the rewrite benchmark:
+## Rewrite
 
-```sh
-make benchmark
-BFG_JAR=/tmp/bfg-1.15.0.jar \
-JAVA_BIN=/opt/homebrew/opt/openjdk/bin/java make benchmark
-```
-
-The comparison below was measured on macOS arm64 with 20,000 linear commits,
-libgit2 1.9.4, clang `-O3`, BFG 1.15.0, and OpenJDK 26.0.1. Compilation time is
-not included.
-
-| tool | real | user | sys |
-| --- | ---: | ---: | ---: |
-| BBFG | 0.70 s | 0.60 s | 0.44 s |
-| BFG | 5.04 s | 3.70 s | 3.76 s |
-
-BBFG was 7.20x faster in this run. BFG's CPU time is higher than its elapsed
-time because the rewrite uses parallel workers.
-
-Current commands:
+Inspection commands:
 
 ```sh
 ./build/bbfg .
@@ -52,22 +34,47 @@ Current commands:
 ./build/bbfg --list-refs .
 ./build/bbfg --list-rewrite-refs .
 ./build/bbfg --walk-rewrite-commits .
+```
+
+Tree and commit commands:
+
+```sh
 ./build/bbfg --rebuild-head-tree .
 ./build/bbfg --remove-head-entry path/to/file .
 ./build/bbfg --commit-without-entry path/to/file .
 ./build/bbfg --write-rewrite-ref path/to/file .
 ./build/bbfg --rewrite-head-history path/to/file .
-./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
-./build/bbfg --rewrite-ref refs/heads/main --strip-blobs-bigger-than 100M .
-./build/bbfg --rewrite-refs --delete path/to/file .
-./build/bbfg --rewrite-refs --delete-files filename .
-./build/bbfg --rewrite-refs --delete-files filename --strip-blobs-bigger-than 100M .
 ```
 
-Les filtres sont additifs. Les tailles acceptent les suffixes `K`, `M`, `G` et
-`T` (base 1024).
+Rewrite one ref or all rewriteable refs:
 
-Git equivalents:
+```sh
+./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
+./build/bbfg --rewrite-ref refs/tags/v1 --delete-files filename .
+./build/bbfg --rewrite-refs --delete path/to/file .
+```
+
+Only direct refs under `refs/heads` and `refs/tags` are updated. Symbolic refs
+such as `HEAD`, remote-tracking refs, and refs that do not peel to a commit are
+not rewrite targets.
+
+Filters are additive and can be repeated in the same command:
+
+```sh
+./build/bbfg --rewrite-refs \
+  --delete-files filename \
+  --strip-blobs-bigger-than 100M \
+  .
+```
+
+`--delete` removes one exact path, `--delete-files` matches a filename at any
+depth, and `--strip-blobs-bigger-than` removes blobs strictly larger than the
+limit. Size suffixes `K`, `M`, `G`, and `T` use base 1024.
+
+## Git equivalents
+
+These commands show the closest Git operation; they are not always exact
+replacements for the full rewrite.
 
 | bbfg | Git |
 | --- | --- |
@@ -85,6 +92,18 @@ Git equivalents:
 | `./build/bbfg --rewrite-head-history path/to/file .` | `git -C . rev-list --topo-order --reverse HEAD`, then `git commit-tree` for each commit |
 | `./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .` | rewrite commits reachable from `refs/heads/main`, then `git update-ref refs/heads/main COMMIT` |
 | `./build/bbfg --rewrite-ref refs/heads/main --strip-blobs-bigger-than 100M .` | `git filter-repo --strip-blobs-bigger-than 100M` |
-| `./build/bbfg --rewrite-refs --delete path/to/file .` | `git -C . for-each-ref refs/heads refs/tags`, rewrite each direct commit ref, then `git update-ref REF COMMIT` |
+| `./build/bbfg --rewrite-refs --delete path/to/file .` | `git filter-repo --invert-paths --path path/to/file` |
 | `./build/bbfg --rewrite-refs --delete-files filename .` | `git filter-repo --invert-paths --path filename --use-base-name` |
 | `./build/bbfg --rewrite-refs --delete-files filename --strip-blobs-bigger-than 100M .` | combine the two corresponding `git filter-repo` filters |
+
+## Benchmark
+
+```sh
+make benchmark
+BFG_JAR=/tmp/bfg-1.15.0.jar \
+JAVA_BIN=/opt/homebrew/opt/openjdk/bin/java make benchmark
+```
+
+The repository contains a benchmark script for comparing a 20,000-commit
+linear history with BFG. Results depend on the machine, libgit2 version, Java
+version, and build flags.
