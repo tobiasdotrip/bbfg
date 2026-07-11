@@ -12,6 +12,12 @@ typedef struct
   size_t capacity;
 } BbfgRefList;
 
+typedef struct
+{
+  const char* name;
+  const git_oid* target_id;
+} BbfgRefUpdate;
+
 int
 bbfg_collect_rewrite_refs(BbfgRefList* refs, git_repository* repo);
 void
@@ -21,5 +27,10 @@ bbfg_write_ref(git_repository* repo,
                const char* ref_name,
                const git_oid* target_id,
                const char* log_message);
+int
+bbfg_write_refs(git_repository* repo,
+                const BbfgRefUpdate* updates,
+                size_t update_count,
+                const char* log_message);
 
 #endif

@@ -1,6 +1,7 @@
 #include "mempack.h"
 
 #include <git2/odb_backend.h>
+#include <git2/pack.h>
 #include <git2/sys/mempack.h>
 #include <git2/sys/odb_backend.h>
 
@@ -46,13 +47,24 @@ bbfg_mempack_begin(BbfgMempack* mempack, git_repository* repo)
 int
 bbfg_mempack_commit(BbfgMempack* mempack, git_repository* repo)
 {
+  git_packbuilder* packbuilder = NULL;
+  if (git_packbuilder_new(&packbuilder, repo) < 0) {
+    return -1;
+  }
+
+  git_packbuilder_set_threads(packbuilder, 0);
+
   git_buf pack = GIT_BUF_INIT;
-  int result = git_mempack_dump(&pack, repo, mempack->backend);
+  int result = git_mempack_write_thin_pack(mempack->backend, packbuilder);
+  if (result == 0) {
+    result = git_packbuilder_write_buf(&pack, packbuilder);
+  }
   if (result == 0) {
     result = write_pack(mempack->odb, &pack);
   }
 
   git_buf_dispose(&pack);
+  git_packbuilder_free(packbuilder);
   if (result == 0) {
     result = git_mempack_reset(mempack->backend);
   }

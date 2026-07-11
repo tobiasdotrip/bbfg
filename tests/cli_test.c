@@ -249,6 +249,59 @@ Test(cli, rewrite_ref_command)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_annotated_tag)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_annotated_tag(repo);
+
+  char* before_tag =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/v1", repo);
+  bbfg_test_strip_trailing_newline(before_tag);
+  char* rewritten = bbfg_test_read_command(
+    "%s --rewrite-ref refs/tags/v1 --delete dir/nested.txt %s", bbfg, repo);
+  bbfg_test_strip_trailing_newline(rewritten);
+
+  char* after_tag =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/v1", repo);
+  bbfg_test_strip_trailing_newline(after_tag);
+  cr_assert_str_neq(after_tag, before_tag);
+  cr_assert_str_eq(rewritten, after_tag);
+
+  char* type =
+    bbfg_test_read_command("git -C %s cat-file -t refs/tags/v1", repo);
+  cr_assert_str_eq(type, "tag\n");
+  free(type);
+
+  char* target =
+    bbfg_test_read_command("git -C %s rev-parse 'refs/tags/v1^{commit}'", repo);
+  bbfg_test_strip_trailing_newline(target);
+  char* names =
+    bbfg_test_read_command("git -C %s ls-tree -r --name-only %s", repo, target);
+  cr_assert_null(strstr(names, "dir/nested.txt"));
+  cr_assert_not_null(strstr(names, "other/nested.txt"));
+  free(names);
+
+  char* tag_body =
+    bbfg_test_read_command("git -C %s cat-file -p refs/tags/v1", repo);
+  cr_assert_not_null(strstr(tag_body, "tag v1\n"));
+  cr_assert_not_null(strstr(tag_body, "Release v1\n"));
+  free(tag_body);
+
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s fsck --full --no-progress >/dev/null", repo),
+               0);
+
+  free(target);
+  free(after_tag);
+  free(rewritten);
+  free(before_tag);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_merge_history)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
@@ -349,10 +402,14 @@ Test(cli, rewrite_merge_refs)
 
   bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
   bbfg_test_add_merge_history(repo);
+  bbfg_test_add_annotated_tag(repo);
 
   char* before_feature =
     bbfg_test_read_command("git -C %s rev-parse refs/heads/feature", repo);
   bbfg_test_strip_trailing_newline(before_feature);
+  char* before_tag =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/v1", repo);
+  bbfg_test_strip_trailing_newline(before_tag);
 
   char* output = bbfg_test_read_command(
     "%s --rewrite-refs --delete dir/nested.txt %s", bbfg, repo);
@@ -360,6 +417,10 @@ Test(cli, rewrite_merge_refs)
     bbfg_test_read_command("git -C %s rev-parse refs/heads/feature", repo);
   bbfg_test_strip_trailing_newline(after_feature);
   cr_assert_str_neq(after_feature, before_feature);
+  char* after_tag =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/v1", repo);
+  bbfg_test_strip_trailing_newline(after_tag);
+  cr_assert_str_neq(after_tag, before_tag);
 
   char* main_names = bbfg_test_read_command(
     "git -C %s ls-tree -r --name-only refs/heads/main", repo);
@@ -373,10 +434,17 @@ Test(cli, rewrite_merge_refs)
   cr_assert_not_null(strstr(feature_names, "feature.txt"));
   free(feature_names);
 
+  char* tag_type =
+    bbfg_test_read_command("git -C %s cat-file -t refs/tags/v1", repo);
+  cr_assert_str_eq(tag_type, "tag\n");
+  free(tag_type);
+
   cr_assert_eq(bbfg_test_run_command(
                  "git -C %s fsck --full --no-progress >/dev/null", repo),
                0);
 
+  free(after_tag);
+  free(before_tag);
   free(after_feature);
   free(before_feature);
   free(output);

@@ -50,7 +50,7 @@ is_rewrite_namespace(const char* name)
 }
 
 static int
-is_direct_commit_ref(git_repository* repo, const char* name)
+is_rewriteable_ref(git_repository* repo, const char* name)
 {
   git_reference* ref = NULL;
   if (git_reference_lookup(&ref, repo, name) < 0) {
@@ -62,13 +62,9 @@ is_direct_commit_ref(git_repository* repo, const char* name)
     return 0;
   }
 
-  const git_oid* target_id = git_reference_target(ref);
-  git_commit* commit = NULL;
-  int result =
-    target_id != NULL && git_commit_lookup(&commit, repo, target_id) == 0;
-  if (commit != NULL) {
-    git_commit_free(commit);
-  }
+  git_object* commit = NULL;
+  int result = git_reference_peel(&commit, ref, GIT_OBJECT_COMMIT) == 0;
+  git_object_free(commit);
   git_reference_free(ref);
   return result;
 }
@@ -78,8 +74,7 @@ collect_rewrite_ref(const char* name, void* payload)
 {
   CollectRewriteRefsPayload* collect = (CollectRewriteRefsPayload*)payload;
 
-  if (!is_rewrite_namespace(name) ||
-      !is_direct_commit_ref(collect->repo, name)) {
+  if (!is_rewrite_namespace(name) || !is_rewriteable_ref(collect->repo, name)) {
     return 0;
   }
 
@@ -122,13 +117,53 @@ bbfg_write_ref(git_repository* repo,
                const git_oid* target_id,
                const char* log_message)
 {
-  git_reference* ref = NULL;
-  if (git_reference_create(&ref, repo, ref_name, target_id, 1, log_message) <
-      0) {
-    bbfg_print_git_error("could not write ref", ref_name);
+  BbfgRefUpdate update;
+  update.name = ref_name;
+  update.target_id = target_id;
+  return bbfg_write_refs(repo, &update, 1, log_message);
+}
+
+int
+bbfg_write_refs(git_repository* repo,
+                const BbfgRefUpdate* updates,
+                size_t update_count,
+                const char* log_message)
+{
+  if (update_count == 0) {
+    return 0;
+  }
+
+  git_transaction* transaction = NULL;
+  if (git_transaction_new(&transaction, repo) < 0) {
+    bbfg_print_git_error("could not start ref transaction", "refs");
     return -1;
   }
 
-  git_reference_free(ref);
-  return 0;
+  size_t i;
+  for (i = 0; i < update_count; i++) {
+    if (git_transaction_lock_ref(transaction, updates[i].name) < 0) {
+      bbfg_print_git_error("could not lock ref", updates[i].name);
+      git_transaction_free(transaction);
+      return -1;
+    }
+  }
+
+  for (i = 0; i < update_count; i++) {
+    if (git_transaction_set_target(transaction,
+                                   updates[i].name,
+                                   updates[i].target_id,
+                                   NULL,
+                                   log_message) < 0) {
+      bbfg_print_git_error("could not queue ref update", updates[i].name);
+      git_transaction_free(transaction);
+      return -1;
+    }
+  }
+
+  int result = git_transaction_commit(transaction);
+  if (result < 0) {
+    bbfg_print_git_error("could not commit ref transaction", "refs");
+  }
+  git_transaction_free(transaction);
+  return result;
 }

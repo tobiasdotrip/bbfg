@@ -7,10 +7,19 @@
 
 #include <stddef.h>
 
+typedef enum
+{
+  BBFG_REWRITE_DIRECT_REF,
+  BBFG_REWRITE_ANNOTATED_TAG
+} BbfgRewriteRefKind;
+
 typedef struct
 {
   const char* name;
+  BbfgRewriteRefKind kind;
+  git_oid original_ref_id;
   git_oid rewritten_commit_id;
+  git_oid rewritten_ref_id;
 } BbfgRewriteRef;
 
 int

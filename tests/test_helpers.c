@@ -191,6 +191,14 @@ bbfg_test_add_merge_history(const char* repo)
 }
 
 void
+bbfg_test_add_annotated_tag(const char* repo)
+{
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s tag -a -m 'Release v1' v1 HEAD~1", repo),
+    0);
+}
+
+void
 bbfg_test_init_repo(char* tmpdir,
                     size_t tmpdir_size,
                     char* repo,

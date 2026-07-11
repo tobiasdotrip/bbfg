@@ -158,11 +158,11 @@ bbfg_rewrite_ref(git_repository* repo,
   }
 
   if (bbfg_write_ref(
-        repo, ref->name, &ref->rewritten_commit_id, "bbfg rewrite ref") < 0) {
+        repo, ref->name, &ref->rewritten_ref_id, "bbfg rewrite ref") < 0) {
     return -1;
   }
 
-  printf("%s\n", git_oid_tostr_s(&ref->rewritten_commit_id));
+  printf("%s\n", git_oid_tostr_s(&ref->rewritten_ref_id));
   return 0;
 }
 
@@ -191,22 +191,36 @@ bbfg_rewrite_refs(git_repository* repo,
     return -1;
   }
 
-  size_t i;
-  for (i = 0; i < refs.count; i++) {
-    if (bbfg_write_ref(repo,
-                       rewrite_refs[i].name,
-                       &rewrite_refs[i].rewritten_commit_id,
-                       "bbfg rewrite ref") < 0) {
+  BbfgRefUpdate* updates = NULL;
+  if (refs.count > 0) {
+    updates = (BbfgRefUpdate*)calloc(refs.count, sizeof(*updates));
+    if (updates == NULL) {
       free(rewrite_refs);
       bbfg_ref_list_dispose(&refs);
       return -1;
     }
-
-    printf("%s %s\n",
-           rewrite_refs[i].name,
-           git_oid_tostr_s(&rewrite_refs[i].rewritten_commit_id));
   }
 
+  size_t i;
+  for (i = 0; i < refs.count; i++) {
+    updates[i].name = rewrite_refs[i].name;
+    updates[i].target_id = &rewrite_refs[i].rewritten_ref_id;
+  }
+
+  if (bbfg_write_refs(repo, updates, refs.count, "bbfg rewrite ref") < 0) {
+    free(updates);
+    free(rewrite_refs);
+    bbfg_ref_list_dispose(&refs);
+    return -1;
+  }
+
+  for (i = 0; i < refs.count; i++) {
+    printf("%s %s\n",
+           rewrite_refs[i].name,
+           git_oid_tostr_s(&rewrite_refs[i].rewritten_ref_id));
+  }
+
+  free(updates);
   free(rewrite_refs);
   bbfg_ref_list_dispose(&refs);
   return 0;

@@ -27,6 +27,11 @@ rewrite_history_from_walk(RewriteState* state,
                           git_revwalk* walk,
                           const BbfgFilter* filter);
 
+static int
+create_rewritten_tag(git_oid* rewritten_ref_id,
+                     git_repository* repo,
+                     const BbfgRewriteRef* ref);
+
 static void
 free_commit_array(const git_commit** commits, size_t count)
 {
@@ -307,6 +312,7 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
                             git_repository* repo,
                             const char* repo_path,
                             git_commit* start_commit,
+                            BbfgRewriteRef* rewrite_ref,
                             const BbfgFilter* filter)
 {
   git_revwalk* walk = NULL;
@@ -339,6 +345,15 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
       result = -1;
     } else {
       git_oid_cpy(rewritten_commit_id, rewritten_tip_id);
+      if (rewrite_ref != NULL) {
+        git_oid_cpy(&rewrite_ref->rewritten_commit_id, rewritten_tip_id);
+        if (rewrite_ref->kind == BBFG_REWRITE_ANNOTATED_TAG) {
+          result = create_rewritten_tag(
+            &rewrite_ref->rewritten_ref_id, repo, rewrite_ref);
+        } else {
+          git_oid_cpy(&rewrite_ref->rewritten_ref_id, rewritten_tip_id);
+        }
+      }
     }
   }
 
@@ -358,13 +373,96 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
 }
 
 static int
+classify_ref(BbfgRewriteRef* ref, git_repository* repo)
+{
+  git_reference* original = NULL;
+  if (git_reference_lookup(&original, repo, ref->name) < 0) {
+    bbfg_print_git_error("could not resolve ref", ref->name);
+    return -1;
+  }
+
+  git_reference* resolved = NULL;
+  if (git_reference_resolve(&resolved, original) < 0) {
+    bbfg_print_git_error("could not resolve ref", ref->name);
+    git_reference_free(original);
+    return -1;
+  }
+
+  const git_oid* target_id = git_reference_target(resolved);
+  git_object* target = NULL;
+  if (target_id == NULL ||
+      git_object_lookup(&target, repo, target_id, GIT_OBJECT_ANY) < 0) {
+    bbfg_print_git_error("ref does not point to an object", ref->name);
+    git_reference_free(resolved);
+    git_reference_free(original);
+    return -1;
+  }
+
+  if (git_object_type(target) == GIT_OBJECT_COMMIT) {
+    ref->kind = BBFG_REWRITE_DIRECT_REF;
+  } else if (git_object_type(target) == GIT_OBJECT_TAG) {
+    ref->kind = BBFG_REWRITE_ANNOTATED_TAG;
+  } else {
+    bbfg_print_git_error("ref does not point to a commit or tag", ref->name);
+    git_object_free(target);
+    git_reference_free(resolved);
+    git_reference_free(original);
+    return -1;
+  }
+
+  git_oid_cpy(&ref->original_ref_id, target_id);
+  git_object_free(target);
+  git_reference_free(resolved);
+  git_reference_free(original);
+  return 0;
+}
+
+static int
+create_rewritten_tag(git_oid* rewritten_ref_id,
+                     git_repository* repo,
+                     const BbfgRewriteRef* ref)
+{
+  git_tag* tag = NULL;
+  if (git_tag_lookup(&tag, repo, &ref->original_ref_id) < 0) {
+    bbfg_print_git_error("could not read annotated tag", ref->name);
+    return -1;
+  }
+
+  git_object* target = NULL;
+  if (git_object_lookup(
+        &target, repo, &ref->rewritten_commit_id, GIT_OBJECT_COMMIT) < 0) {
+    bbfg_print_git_error("could not read rewritten tag target", ref->name);
+    git_tag_free(tag);
+    return -1;
+  }
+
+  int result = git_tag_annotation_create(rewritten_ref_id,
+                                         repo,
+                                         git_tag_name(tag),
+                                         target,
+                                         git_tag_tagger(tag),
+                                         git_tag_message(tag));
+  if (result < 0) {
+    bbfg_print_git_error("could not create rewritten tag", ref->name);
+  }
+
+  git_object_free(target);
+  git_tag_free(tag);
+  return result;
+}
+
+static int
 push_ref_tip(git_oid* tip_id,
              git_revwalk* walk,
              git_repository* repo,
-             const char* ref_name)
+             BbfgRewriteRef* ref)
 {
+  if (classify_ref(ref, repo) < 0) {
+    return -1;
+  }
+
   git_commit* commit = NULL;
-  if (bbfg_lookup_ref_commit(&commit, repo, ref_name) < 0) {
+  if (bbfg_lookup_ref_commit(&commit, repo, ref->name) < 0) {
     return -1;
   }
 
@@ -378,13 +476,13 @@ static int
 push_ref_tips(git_oid* tip_ids,
               git_revwalk* walk,
               git_repository* repo,
-              const BbfgRewriteRef* refs,
+              BbfgRewriteRef* refs,
               size_t ref_count)
 {
   size_t i;
 
   for (i = 0; i < ref_count; i++) {
-    if (push_ref_tip(&tip_ids[i], walk, repo, refs[i].name) < 0) {
+    if (push_ref_tip(&tip_ids[i], walk, repo, &refs[i]) < 0) {
       bbfg_print_git_error("could not push rewrite tip", refs[i].name);
       return -1;
     }
@@ -395,6 +493,7 @@ push_ref_tips(git_oid* tip_ids,
 
 static int
 copy_rewritten_ref_tips(BbfgRewriteRef* refs,
+                        git_repository* repo,
                         const git_oid* tip_ids,
                         const BbfgOidMap* commits,
                         size_t ref_count)
@@ -409,6 +508,13 @@ copy_rewritten_ref_tips(BbfgRewriteRef* refs,
     }
 
     git_oid_cpy(&refs[i].rewritten_commit_id, rewritten_tip_id);
+    if (refs[i].kind == BBFG_REWRITE_ANNOTATED_TAG) {
+      if (create_rewritten_tag(&refs[i].rewritten_ref_id, repo, &refs[i]) < 0) {
+        return -1;
+      }
+    } else {
+      git_oid_cpy(&refs[i].rewritten_ref_id, rewritten_tip_id);
+    }
   }
 
   return 0;
@@ -509,7 +615,7 @@ bbfg_rewrite_head_history(git_oid* rewritten_commit_id,
   }
 
   int result = rewrite_history_from_commit(
-    rewritten_commit_id, repo, repo_path, head_commit, filter);
+    rewritten_commit_id, repo, repo_path, head_commit, NULL, filter);
   git_commit_free(head_commit);
   return result;
 }
@@ -520,13 +626,17 @@ bbfg_rewrite_ref_history(BbfgRewriteRef* ref,
                          const char* repo_path,
                          const BbfgFilter* filter)
 {
+  if (classify_ref(ref, repo) < 0) {
+    return -1;
+  }
+
   git_commit* commit = NULL;
   if (bbfg_lookup_ref_commit(&commit, repo, ref->name) < 0) {
     return -1;
   }
 
   int result = rewrite_history_from_commit(
-    &ref->rewritten_commit_id, repo, repo_path, commit, filter);
+    &ref->rewritten_commit_id, repo, repo_path, commit, ref, filter);
   git_commit_free(commit);
   return result;
 }
@@ -573,7 +683,8 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
 
   int result = rewrite_history_from_walk(&state, repo, repo_path, walk, filter);
   if (result == 0) {
-    result = copy_rewritten_ref_tips(refs, tip_ids, &state.commits, ref_count);
+    result =
+      copy_rewritten_ref_tips(refs, repo, tip_ids, &state.commits, ref_count);
   }
 
   if (result == 0) {
