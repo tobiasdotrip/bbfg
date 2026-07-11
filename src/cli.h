@@ -1,6 +1,8 @@
 #ifndef BBFG_CLI_H
 #define BBFG_CLI_H
 
+#include "filter.h"
+
 #include <stdio.h>
 
 typedef enum
@@ -21,19 +23,13 @@ typedef enum
   BBFG_COMMAND_REWRITE_REFS
 } BbfgCommand;
 
-typedef enum
-{
-  BBFG_DELETE_PATH,
-  BBFG_DELETE_FILENAME
-} BbfgDeleteMode;
-
 typedef struct
 {
   BbfgCommand command;
-  BbfgDeleteMode delete_mode;
   const char* path;
   const char* ref_name;
   const char* repo_path;
+  BbfgFilter filter;
 } BbfgOptions;
 
 void

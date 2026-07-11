@@ -346,6 +346,42 @@ Test(cli, rewrite_annotated_tag)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_combined_filters)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_large_file(repo);
+
+  char* rewritten = bbfg_test_read_command(
+    "%s --rewrite-ref refs/heads/main --delete-files nested.txt "
+    "--strip-blobs-bigger-than 1K %s",
+    bbfg,
+    repo);
+  bbfg_test_strip_trailing_newline(rewritten);
+
+  char* names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only refs/heads/main", repo);
+  cr_assert_null(strstr(names, "nested.txt"));
+  cr_assert_null(strstr(names, "large.bin"));
+  cr_assert_not_null(strstr(names, "file.txt"));
+  free(names);
+
+  char* type =
+    bbfg_test_read_command("git -C %s cat-file -t %s", repo, rewritten);
+  cr_assert_str_eq(type, "commit\n");
+  free(type);
+
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s fsck --full --no-progress >/dev/null", repo),
+               0);
+
+  free(rewritten);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_merge_history)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];

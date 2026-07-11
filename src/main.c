@@ -1,20 +1,22 @@
 #include "cli.h"
 #include "commands.h"
 #include "error.h"
-#include "filter.h"
 
 #include <git2.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 
-static void
-init_filter(BbfgFilter* filter, const BbfgOptions* options)
+static int
+add_command_path_filter(BbfgOptions* options)
 {
-  if (options->delete_mode == BBFG_DELETE_FILENAME) {
-    bbfg_filter_delete_filename(filter, options->path);
-  } else {
-    bbfg_filter_delete_path(filter, options->path);
+  switch (options->command) {
+    case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY:
+    case BBFG_COMMAND_WRITE_REWRITE_REF:
+    case BBFG_COMMAND_REWRITE_HEAD_HISTORY:
+      return bbfg_filter_delete_path(&options->filter, options->path);
+    default:
+      return 0;
   }
 }
 
@@ -27,17 +29,20 @@ main(int argc, char** argv)
 
   if (parse_result > 0) {
     bbfg_print_usage(stdout, program_name);
+    bbfg_filter_dispose(&options.filter);
     return EXIT_SUCCESS;
   }
 
   if (parse_result < 0) {
     bbfg_print_usage(stderr, program_name);
+    bbfg_filter_dispose(&options.filter);
     return EXIT_FAILURE;
   }
 
   int init_count = git_libgit2_init();
   if (init_count < 0) {
     fprintf(stderr, "bbfg: failed to initialize libgit2\n");
+    bbfg_filter_dispose(&options.filter);
     return EXIT_FAILURE;
   }
 
@@ -45,6 +50,14 @@ main(int argc, char** argv)
   if (git_repository_open(&repo, options.repo_path) < 0) {
     bbfg_print_git_error("could not open repository", options.repo_path);
     git_libgit2_shutdown();
+    bbfg_filter_dispose(&options.filter);
+    return EXIT_FAILURE;
+  }
+
+  if (add_command_path_filter(&options) < 0) {
+    git_repository_free(repo);
+    git_libgit2_shutdown();
+    bbfg_filter_dispose(&options.filter);
     return EXIT_FAILURE;
   }
 
@@ -79,42 +92,36 @@ main(int argc, char** argv)
         bbfg_remove_head_tree_entry(repo, options.repo_path, options.path);
       break;
     case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY: {
-      BbfgFilter filter;
-      init_filter(&filter, &options);
-      command_result =
-        bbfg_commit_without_tree_entry(repo, options.repo_path, &filter);
+      command_result = bbfg_commit_without_tree_entry(
+        repo, options.repo_path, &options.filter);
       break;
     }
     case BBFG_COMMAND_WRITE_REWRITE_REF: {
-      BbfgFilter filter;
-      init_filter(&filter, &options);
-      command_result = bbfg_write_rewrite_ref(repo, options.repo_path, &filter);
+      command_result =
+        bbfg_write_rewrite_ref(repo, options.repo_path, &options.filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_HEAD_HISTORY: {
-      BbfgFilter filter;
-      init_filter(&filter, &options);
       command_result =
-        bbfg_rewrite_head_history_ref(repo, options.repo_path, &filter);
+        bbfg_rewrite_head_history_ref(repo, options.repo_path, &options.filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_REF: {
-      BbfgFilter filter;
-      init_filter(&filter, &options);
       BbfgRewriteRef ref;
       ref.name = options.ref_name;
-      command_result = bbfg_rewrite_ref(repo, options.repo_path, &ref, &filter);
+      command_result =
+        bbfg_rewrite_ref(repo, options.repo_path, &ref, &options.filter);
       break;
     }
     case BBFG_COMMAND_REWRITE_REFS: {
-      BbfgFilter filter;
-      init_filter(&filter, &options);
-      command_result = bbfg_rewrite_refs(repo, options.repo_path, &filter);
+      command_result =
+        bbfg_rewrite_refs(repo, options.repo_path, &options.filter);
       break;
     }
   }
 
   git_repository_free(repo);
   git_libgit2_shutdown();
+  bbfg_filter_dispose(&options.filter);
   return command_result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -58,9 +58,14 @@ Current commands:
 ./build/bbfg --write-rewrite-ref path/to/file .
 ./build/bbfg --rewrite-head-history path/to/file .
 ./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .
+./build/bbfg --rewrite-ref refs/heads/main --strip-blobs-bigger-than 100M .
 ./build/bbfg --rewrite-refs --delete path/to/file .
 ./build/bbfg --rewrite-refs --delete-files filename .
+./build/bbfg --rewrite-refs --delete-files filename --strip-blobs-bigger-than 100M .
 ```
+
+Les filtres sont additifs. Les tailles acceptent les suffixes `K`, `M`, `G` et
+`T` (base 1024).
 
 Git equivalents:
 
@@ -79,5 +84,7 @@ Git equivalents:
 | `./build/bbfg --write-rewrite-ref path/to/file .` | `git -C . update-ref refs/heads/bbfg-rewrite COMMIT` |
 | `./build/bbfg --rewrite-head-history path/to/file .` | `git -C . rev-list --topo-order --reverse HEAD`, then `git commit-tree` for each commit |
 | `./build/bbfg --rewrite-ref refs/heads/main --delete path/to/file .` | rewrite commits reachable from `refs/heads/main`, then `git update-ref refs/heads/main COMMIT` |
+| `./build/bbfg --rewrite-ref refs/heads/main --strip-blobs-bigger-than 100M .` | `git filter-repo --strip-blobs-bigger-than 100M` |
 | `./build/bbfg --rewrite-refs --delete path/to/file .` | `git -C . for-each-ref refs/heads refs/tags`, rewrite each direct commit ref, then `git update-ref REF COMMIT` |
 | `./build/bbfg --rewrite-refs --delete-files filename .` | `git filter-repo --invert-paths --path filename --use-base-name` |
+| `./build/bbfg --rewrite-refs --delete-files filename --strip-blobs-bigger-than 100M .` | combine the two corresponding `git filter-repo` filters |

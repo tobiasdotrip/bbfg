@@ -184,6 +184,93 @@ bbfg_tree_contains_filename(int* matches,
 }
 
 static int
+contains_large_blob_tree(int* matches,
+                         git_odb* odb,
+                         git_repository* repo,
+                         git_tree* tree,
+                         git_object_size_t max_size);
+
+static int
+contains_large_blob_entry(int* matches,
+                          git_odb* odb,
+                          git_repository* repo,
+                          const git_tree_entry* entry,
+                          git_object_size_t max_size)
+{
+  git_object_t type = git_tree_entry_type(entry);
+  if (type == GIT_OBJECT_BLOB) {
+    size_t size = 0;
+    git_object_t object_type = GIT_OBJECT_INVALID;
+    if (git_odb_read_header(
+          &size, &object_type, odb, git_tree_entry_id(entry)) < 0) {
+      return -1;
+    }
+
+    *matches =
+      object_type == GIT_OBJECT_BLOB && (git_object_size_t)size > max_size;
+    return 0;
+  }
+
+  if (type != GIT_OBJECT_TREE) {
+    *matches = 0;
+    return 0;
+  }
+
+  git_tree* subtree = NULL;
+  if (git_tree_lookup(&subtree, repo, git_tree_entry_id(entry)) < 0) {
+    return -1;
+  }
+
+  int result = contains_large_blob_tree(matches, odb, repo, subtree, max_size);
+  git_tree_free(subtree);
+  return result;
+}
+
+static int
+contains_large_blob_tree(int* matches,
+                         git_odb* odb,
+                         git_repository* repo,
+                         git_tree* tree,
+                         git_object_size_t max_size)
+{
+  size_t i;
+  size_t entry_count = git_tree_entrycount(tree);
+  *matches = 0;
+  for (i = 0; i < entry_count; i++) {
+    const git_tree_entry* entry = git_tree_entry_byindex(tree, i);
+    int entry_matches = 0;
+    int result =
+      contains_large_blob_entry(&entry_matches, odb, repo, entry, max_size);
+    if (result < 0) {
+      return result;
+    }
+
+    if (entry_matches) {
+      *matches = 1;
+      return 0;
+    }
+  }
+
+  return 0;
+}
+
+int
+bbfg_tree_contains_blob_larger_than(int* matches,
+                                    git_repository* repo,
+                                    git_tree* tree,
+                                    git_object_size_t max_size)
+{
+  git_odb* odb = NULL;
+  if (git_repository_odb(&odb, repo) < 0) {
+    return -1;
+  }
+
+  int result = contains_large_blob_tree(matches, odb, repo, tree, max_size);
+  git_odb_free(odb);
+  return result;
+}
+
+static int
 remove_filename_entry(int* changed,
                       git_treebuilder* builder,
                       git_repository* repo,
@@ -268,5 +355,137 @@ bbfg_tree_remove_filename(git_oid* rewritten_tree_id,
 
   int result = git_treebuilder_write(rewritten_tree_id, builder);
   git_treebuilder_free(builder);
+  return result;
+}
+
+static int
+remove_large_blob_tree(git_oid* rewritten_tree_id,
+                       git_odb* odb,
+                       git_repository* repo,
+                       git_tree* tree,
+                       git_object_size_t max_size);
+
+static int
+remove_large_blob_entry(int* changed,
+                        git_treebuilder* builder,
+                        git_odb* odb,
+                        git_repository* repo,
+                        const git_tree_entry* entry,
+                        git_object_size_t max_size)
+{
+  const char* entry_name = git_tree_entry_name(entry);
+  git_object_t type = git_tree_entry_type(entry);
+  *changed = 0;
+
+  if (type == GIT_OBJECT_BLOB) {
+    size_t size = 0;
+    git_object_t object_type = GIT_OBJECT_INVALID;
+    if (git_odb_read_header(
+          &size, &object_type, odb, git_tree_entry_id(entry)) < 0) {
+      return -1;
+    }
+
+    if (object_type != GIT_OBJECT_BLOB || (git_object_size_t)size <= max_size) {
+      return 0;
+    }
+
+    int result = git_treebuilder_remove(builder, entry_name);
+    *changed = result == 0;
+    return result;
+  }
+
+  if (type != GIT_OBJECT_TREE) {
+    return 0;
+  }
+
+  git_tree* subtree = NULL;
+  if (git_tree_lookup(&subtree, repo, git_tree_entry_id(entry)) < 0) {
+    return -1;
+  }
+
+  git_oid rewritten_subtree_id;
+  int subtree_changed = 0;
+  int result =
+    remove_large_blob_tree(&rewritten_subtree_id, odb, repo, subtree, max_size);
+  git_tree_free(subtree);
+  if (result < 0) {
+    return result;
+  }
+
+  if (!git_oid_equal(&rewritten_subtree_id, git_tree_entry_id(entry))) {
+    int is_empty = 0;
+    result = tree_is_empty(&is_empty, repo, &rewritten_subtree_id);
+    if (result == 0 && is_empty) {
+      result = git_treebuilder_remove(builder, entry_name);
+    } else if (result == 0) {
+      result = git_treebuilder_insert(NULL,
+                                      builder,
+                                      entry_name,
+                                      &rewritten_subtree_id,
+                                      git_tree_entry_filemode(entry));
+    }
+    subtree_changed = result == 0;
+  }
+
+  *changed = subtree_changed;
+  return result;
+}
+
+static int
+remove_large_blob_tree(git_oid* rewritten_tree_id,
+                       git_odb* odb,
+                       git_repository* repo,
+                       git_tree* tree,
+                       git_object_size_t max_size)
+{
+  git_treebuilder* builder = NULL;
+  if (git_treebuilder_new(&builder, repo, tree) < 0) {
+    return -1;
+  }
+
+  int changed = 0;
+  size_t i;
+  size_t entry_count = git_tree_entrycount(tree);
+  for (i = 0; i < entry_count; i++) {
+    int entry_changed = 0;
+    int result = remove_large_blob_entry(&entry_changed,
+                                         builder,
+                                         odb,
+                                         repo,
+                                         git_tree_entry_byindex(tree, i),
+                                         max_size);
+    if (result < 0) {
+      git_treebuilder_free(builder);
+      return result;
+    }
+
+    changed = changed || entry_changed;
+  }
+
+  if (!changed) {
+    git_oid_cpy(rewritten_tree_id, git_tree_id(tree));
+    git_treebuilder_free(builder);
+    return 0;
+  }
+
+  int result = git_treebuilder_write(rewritten_tree_id, builder);
+  git_treebuilder_free(builder);
+  return result;
+}
+
+int
+bbfg_tree_remove_blobs_larger_than(git_oid* rewritten_tree_id,
+                                   git_repository* repo,
+                                   git_tree* tree,
+                                   git_object_size_t max_size)
+{
+  git_odb* odb = NULL;
+  if (git_repository_odb(&odb, repo) < 0) {
+    return -1;
+  }
+
+  int result =
+    remove_large_blob_tree(rewritten_tree_id, odb, repo, tree, max_size);
+  git_odb_free(odb);
   return result;
 }

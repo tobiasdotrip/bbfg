@@ -1,7 +1,10 @@
 #include "cli.h"
 
+#include <errno.h>
 #include <getopt.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 typedef struct
 {
@@ -55,8 +58,10 @@ bbfg_print_usage(FILE* stream, const char* program_name)
           "[-d|--remove-head-entry path] [-C|--commit-without-entry path] "
           "[-W|--write-rewrite-ref path] "
           "[-H|--rewrite-head-history path] "
-          "[--rewrite-ref ref --delete path|--delete-files filename] "
-          "[--rewrite-refs --delete path|--delete-files filename] "
+          "[--rewrite-ref ref --delete path|--delete-files filename|"
+          "--strip-blobs-bigger-than size] "
+          "[--rewrite-refs --delete path|--delete-files filename|"
+          "--strip-blobs-bigger-than size] "
           "<repo>\n",
           program_name);
 }
@@ -76,10 +81,10 @@ static void
 init_options(BbfgOptions* options)
 {
   options->command = BBFG_COMMAND_OPEN_REPO;
-  options->delete_mode = BBFG_DELETE_PATH;
   options->path = NULL;
   options->ref_name = NULL;
   options->repo_path = NULL;
+  bbfg_filter_init(&options->filter);
 }
 
 static const BbfgCommandOption*
@@ -137,10 +142,15 @@ fill_long_options(struct option* long_options)
   long_options[command_options_count + 2].flag = NULL;
   long_options[command_options_count + 2].val = 'F';
 
-  long_options[command_options_count + 3].name = NULL;
-  long_options[command_options_count + 3].has_arg = 0;
+  long_options[command_options_count + 3].name = "strip-blobs-bigger-than";
+  long_options[command_options_count + 3].has_arg = required_argument;
   long_options[command_options_count + 3].flag = NULL;
-  long_options[command_options_count + 3].val = 0;
+  long_options[command_options_count + 3].val = 'S';
+
+  long_options[command_options_count + 4].name = NULL;
+  long_options[command_options_count + 4].has_arg = 0;
+  long_options[command_options_count + 4].flag = NULL;
+  long_options[command_options_count + 4].val = 0;
 }
 
 static int
@@ -160,18 +170,79 @@ validate_options(const BbfgOptions* options, int delete_option)
 }
 
 static int
-parse_delete_option(BbfgOptions* options,
+parse_blob_size(git_object_size_t* size, const char* value)
+{
+  if (value == NULL || value[0] < '0' || value[0] > '9') {
+    return -1;
+  }
+
+  errno = 0;
+  char* end = NULL;
+  unsigned long long number = strtoull(value, &end, 10);
+  if (errno == ERANGE || end == value) {
+    return -1;
+  }
+
+  unsigned long long multiplier = 1;
+  if (*end != '\0') {
+    if (end[1] != '\0') {
+      return -1;
+    }
+
+    switch (*end) {
+      case 'k':
+      case 'K':
+        multiplier = 1024ULL;
+        break;
+      case 'm':
+      case 'M':
+        multiplier = 1024ULL * 1024ULL;
+        break;
+      case 'g':
+      case 'G':
+        multiplier = 1024ULL * 1024ULL * 1024ULL;
+        break;
+      case 't':
+      case 'T':
+        multiplier = 1024ULL * 1024ULL * 1024ULL * 1024ULL;
+        break;
+      default:
+        return -1;
+    }
+  }
+
+  if (number > UINT64_MAX / multiplier) {
+    return -1;
+  }
+
+  *size = (git_object_size_t)(number * multiplier);
+  return 0;
+}
+
+static int
+parse_filter_option(BbfgOptions* options,
                     int option,
                     const char* argument,
                     int* delete_option)
 {
-  if (options->path != NULL) {
+  int result;
+  if (option == 'D') {
+    result = bbfg_filter_delete_path(&options->filter, argument);
+  } else if (option == 'F') {
+    result = bbfg_filter_delete_filename(&options->filter, argument);
+  } else {
+    git_object_size_t max_size = 0;
+    if (parse_blob_size(&max_size, argument) < 0) {
+      return -1;
+    }
+
+    result = bbfg_filter_delete_blobs_larger_than(&options->filter, max_size);
+  }
+
+  if (result < 0) {
     return -1;
   }
 
-  options->path = argument;
-  options->delete_mode =
-    option == 'F' ? BBFG_DELETE_FILENAME : BBFG_DELETE_PATH;
   *delete_option = 1;
   return 0;
 }
@@ -205,8 +276,8 @@ parse_option(BbfgOptions* options,
     return 1;
   }
 
-  if (option == 'D' || option == 'F') {
-    return parse_delete_option(options, option, argument, delete_option);
+  if (option == 'D' || option == 'F' || option == 'S') {
+    return parse_filter_option(options, option, argument, delete_option);
   }
 
   return parse_command_option(options, option, argument);
@@ -231,7 +302,7 @@ int
 bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
 {
   struct option
-    long_options[sizeof(command_options) / sizeof(command_options[0]) + 4];
+    long_options[sizeof(command_options) / sizeof(command_options[0]) + 5];
   int option;
   int delete_option = 0;
 
@@ -240,7 +311,7 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
   opterr = 0;
 
   while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:", long_options, NULL)) !=
+            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:S:", long_options, NULL)) !=
          -1) {
     int result = parse_option(options, option, optarg, &delete_option);
     if (result != 0) {

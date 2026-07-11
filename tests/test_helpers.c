@@ -199,6 +199,19 @@ bbfg_test_add_annotated_tag(const char* repo)
 }
 
 void
+bbfg_test_add_large_file(const char* repo)
+{
+  cr_assert_eq(
+    bbfg_test_run_command("dd if=/dev/zero of=%s/large.bin bs=2048 count=1 "
+                          ">/dev/null 2>&1",
+                          repo),
+    0);
+  cr_assert_eq(bbfg_test_run_command("git -C %s add large.bin", repo), 0);
+  cr_assert_eq(
+    bbfg_test_run_command("git -C %s commit -q -m 'Large file'", repo), 0);
+}
+
+void
 bbfg_test_init_repo(char* tmpdir,
                     size_t tmpdir_size,
                     char* repo,
