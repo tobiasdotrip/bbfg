@@ -20,6 +20,8 @@ typedef struct
 
 int
 bbfg_collect_rewrite_refs(BbfgRefList* refs, git_repository* repo);
+int
+bbfg_validate_rewrite_ref(git_repository* repo, const char* ref_name);
 void
 bbfg_ref_list_dispose(BbfgRefList* refs);
 int

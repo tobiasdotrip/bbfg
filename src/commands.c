@@ -153,6 +153,10 @@ bbfg_rewrite_ref(git_repository* repo,
                  BbfgRewriteRef* ref,
                  const BbfgFilter* filter)
 {
+  if (bbfg_validate_rewrite_ref(repo, ref->name) < 0) {
+    return -1;
+  }
+
   if (bbfg_rewrite_ref_history(ref, repo, repo_path, filter) < 0) {
     return -1;
   }

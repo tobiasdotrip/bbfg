@@ -249,6 +249,50 @@ Test(cli, rewrite_ref_command)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_ref_rejects_unsafe_refs)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+
+  char* before_head =
+    bbfg_test_read_command("git -C %s symbolic-ref HEAD", repo);
+  char* before_commit =
+    bbfg_test_read_command("git -C %s rev-parse HEAD", repo);
+  cr_assert_neq(
+    bbfg_test_run_command("%s --rewrite-ref HEAD --delete dir/nested.txt %s "
+                          ">/dev/null 2>&1",
+                          bbfg,
+                          repo),
+    0);
+  cr_assert_neq(
+    bbfg_test_run_command("%s --rewrite-ref refs/remotes/origin/main --delete "
+                          "dir/nested.txt %s >/dev/null 2>&1",
+                          bbfg,
+                          repo),
+    0);
+  cr_assert_neq(
+    bbfg_test_run_command("%s --rewrite-ref refs/heads/main..bad --delete "
+                          "dir/nested.txt %s >/dev/null 2>&1",
+                          bbfg,
+                          repo),
+    0);
+
+  char* actual = bbfg_test_read_command("git -C %s symbolic-ref HEAD", repo);
+  cr_assert_str_eq(actual, before_head);
+  free(actual);
+
+  actual = bbfg_test_read_command("git -C %s rev-parse HEAD", repo);
+  cr_assert_str_eq(actual, before_commit);
+  free(actual);
+
+  free(before_commit);
+  free(before_head);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_annotated_tag)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
