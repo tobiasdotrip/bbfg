@@ -30,6 +30,90 @@ tree_is_empty(int* is_empty, git_repository* repo, const git_oid* tree_id)
   return 0;
 }
 
+static int
+remove_tree_leaf(git_oid* rewritten_tree_id,
+                 git_treebuilder* builder,
+                 const char* path)
+{
+  int result = git_treebuilder_remove(builder, path);
+  if (result == 0) {
+    result = git_treebuilder_write(rewritten_tree_id, builder);
+  }
+
+  return result;
+}
+
+static int
+replace_subtree_entry(git_treebuilder* builder,
+                      git_repository* repo,
+                      const git_tree_entry* entry,
+                      const char* component,
+                      const git_oid* rewritten_subtree_id)
+{
+  int is_empty = 0;
+  int result = tree_is_empty(&is_empty, repo, rewritten_subtree_id);
+  if (result < 0) {
+    return result;
+  }
+
+  if (is_empty) {
+    return git_treebuilder_remove(builder, component);
+  }
+
+  return git_treebuilder_insert(NULL,
+                                builder,
+                                component,
+                                rewritten_subtree_id,
+                                git_tree_entry_filemode(entry));
+}
+
+static int
+remove_path_subtree(git_oid* rewritten_tree_id,
+                    git_repository* repo,
+                    git_tree* tree,
+                    git_treebuilder* builder,
+                    const char* path,
+                    const char* slash)
+{
+  if (slash == path || slash[1] == '\0') {
+    return -1;
+  }
+
+  char* component = NULL;
+  if (copy_path_component(&component, path, (size_t)(slash - path)) < 0) {
+    return -1;
+  }
+
+  const git_tree_entry* entry = git_tree_entry_byname(tree, component);
+  if (entry == NULL || git_tree_entry_type(entry) != GIT_OBJECT_TREE) {
+    free(component);
+    return -1;
+  }
+
+  git_tree* subtree = NULL;
+  if (git_tree_lookup(&subtree, repo, git_tree_entry_id(entry)) < 0) {
+    free(component);
+    return -1;
+  }
+
+  git_oid rewritten_subtree_id;
+  int result =
+    bbfg_tree_remove_path(&rewritten_subtree_id, repo, subtree, slash + 1);
+  git_tree_free(subtree);
+
+  if (result == 0) {
+    result = replace_subtree_entry(
+      builder, repo, entry, component, &rewritten_subtree_id);
+  }
+
+  if (result == 0) {
+    result = git_treebuilder_write(rewritten_tree_id, builder);
+  }
+
+  free(component);
+  return result;
+}
+
 int
 bbfg_tree_remove_path(git_oid* rewritten_tree_id,
                       git_repository* repo,
@@ -42,66 +126,33 @@ bbfg_tree_remove_path(git_oid* rewritten_tree_id,
   }
 
   const char* slash = strchr(path, '/');
-  if (slash == NULL) {
-    int result = git_treebuilder_remove(builder, path);
-    if (result == 0) {
-      result = git_treebuilder_write(rewritten_tree_id, builder);
-    }
+  int result = slash == NULL
+                 ? remove_tree_leaf(rewritten_tree_id, builder, path)
+                 : remove_path_subtree(
+                     rewritten_tree_id, repo, tree, builder, path, slash);
+  git_treebuilder_free(builder);
+  return result;
+}
 
-    git_treebuilder_free(builder);
-    return result;
-  }
-
-  if (slash == path || slash[1] == '\0') {
-    git_treebuilder_free(builder);
-    return -1;
-  }
-
-  char* component = NULL;
-  if (copy_path_component(&component, path, (size_t)(slash - path)) < 0) {
-    git_treebuilder_free(builder);
-    return -1;
-  }
-
-  const git_tree_entry* entry = git_tree_entry_byname(tree, component);
-  if (entry == NULL || git_tree_entry_type(entry) != GIT_OBJECT_TREE) {
-    free(component);
-    git_treebuilder_free(builder);
-    return -1;
+static int
+contains_filename_entry(int* matches,
+                        git_repository* repo,
+                        const git_tree_entry* entry,
+                        const char* filename)
+{
+  git_object_t type = git_tree_entry_type(entry);
+  if (type != GIT_OBJECT_TREE) {
+    *matches = strcmp(git_tree_entry_name(entry), filename) == 0;
+    return 0;
   }
 
   git_tree* subtree = NULL;
   if (git_tree_lookup(&subtree, repo, git_tree_entry_id(entry)) < 0) {
-    free(component);
-    git_treebuilder_free(builder);
     return -1;
   }
 
-  git_oid rewritten_subtree_id;
-  int result =
-    bbfg_tree_remove_path(&rewritten_subtree_id, repo, subtree, slash + 1);
+  int result = bbfg_tree_contains_filename(matches, repo, subtree, filename);
   git_tree_free(subtree);
-
-  if (result == 0) {
-    int is_empty = 0;
-    result = tree_is_empty(&is_empty, repo, &rewritten_subtree_id);
-    if (result == 0 && is_empty) {
-      result = git_treebuilder_remove(builder, component);
-    } else if (result == 0) {
-      result = git_treebuilder_insert(NULL,
-                                      builder,
-                                      component,
-                                      &rewritten_subtree_id,
-                                      git_tree_entry_filemode(entry));
-    }
-  }
-
-  if (result == 0) {
-    result = git_treebuilder_write(rewritten_tree_id, builder);
-  }
-
-  free(component);
-  git_treebuilder_free(builder);
   return result;
 }
 
@@ -117,32 +168,15 @@ bbfg_tree_contains_filename(int* matches,
   *matches = 0;
   for (i = 0; i < entry_count; i++) {
     const git_tree_entry* entry = git_tree_entry_byindex(tree, i);
-    git_object_t type = git_tree_entry_type(entry);
-
-    if (type != GIT_OBJECT_TREE &&
-        strcmp(git_tree_entry_name(entry), filename) == 0) {
-      *matches = 1;
-      return 0;
+    int entry_matches = 0;
+    int result = contains_filename_entry(&entry_matches, repo, entry, filename);
+    if (result < 0) {
+      return result;
     }
 
-    if (type == GIT_OBJECT_TREE) {
-      git_tree* subtree = NULL;
-      if (git_tree_lookup(&subtree, repo, git_tree_entry_id(entry)) < 0) {
-        return -1;
-      }
-
-      int subtree_matches = 0;
-      int result =
-        bbfg_tree_contains_filename(&subtree_matches, repo, subtree, filename);
-      git_tree_free(subtree);
-      if (result < 0) {
-        return result;
-      }
-
-      if (subtree_matches) {
-        *matches = 1;
-        return 0;
-      }
+    if (entry_matches) {
+      *matches = 1;
+      return 0;
     }
   }
 

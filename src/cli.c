@@ -72,6 +72,16 @@ set_command(BbfgOptions* options, BbfgCommand command)
   return 0;
 }
 
+static void
+init_options(BbfgOptions* options)
+{
+  options->command = BBFG_COMMAND_OPEN_REPO;
+  options->delete_mode = BBFG_DELETE_PATH;
+  options->path = NULL;
+  options->ref_name = NULL;
+  options->repo_path = NULL;
+}
+
 static const BbfgCommandOption*
 find_command_option(int short_name)
 {
@@ -84,6 +94,20 @@ find_command_option(int short_name)
   }
 
   return NULL;
+}
+
+static int
+command_uses_path(BbfgCommand command)
+{
+  switch (command) {
+    case BBFG_COMMAND_REMOVE_HEAD_ENTRY:
+    case BBFG_COMMAND_COMMIT_WITHOUT_ENTRY:
+    case BBFG_COMMAND_WRITE_REWRITE_REF:
+    case BBFG_COMMAND_REWRITE_HEAD_HISTORY:
+      return 1;
+    default:
+      return 0;
+  }
 }
 
 static void
@@ -135,64 +159,62 @@ validate_options(const BbfgOptions* options, int delete_option)
   return delete_option == 0;
 }
 
-int
-bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
+static int
+parse_delete_option(BbfgOptions* options,
+                    int option,
+                    const char* argument,
+                    int* delete_option)
 {
-  struct option
-    long_options[sizeof(command_options) / sizeof(command_options[0]) + 4];
-  int option;
-  int delete_option = 0;
-
-  fill_long_options(long_options);
-  options->command = BBFG_COMMAND_OPEN_REPO;
-  options->delete_mode = BBFG_DELETE_PATH;
-  options->path = NULL;
-  options->ref_name = NULL;
-  options->repo_path = NULL;
-  opterr = 0;
-
-  while ((option = getopt_long(
-            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:", long_options, NULL)) !=
-         -1) {
-    const BbfgCommandOption* command_option;
-
-    if (option == 'h') {
-      return 1;
-    }
-
-    if (option == 'D' || option == 'F') {
-      if (options->path != NULL) {
-        return -1;
-      }
-
-      options->path = optarg;
-      options->delete_mode =
-        option == 'F' ? BBFG_DELETE_FILENAME : BBFG_DELETE_PATH;
-      delete_option = 1;
-      continue;
-    }
-
-    command_option = find_command_option(option);
-    if (command_option == NULL) {
-      return -1;
-    }
-
-    if (command_option->command == BBFG_COMMAND_REMOVE_HEAD_ENTRY ||
-        command_option->command == BBFG_COMMAND_COMMIT_WITHOUT_ENTRY ||
-        command_option->command == BBFG_COMMAND_WRITE_REWRITE_REF ||
-        command_option->command == BBFG_COMMAND_REWRITE_HEAD_HISTORY) {
-      options->path = optarg;
-    }
-
-    if (command_option->command == BBFG_COMMAND_REWRITE_REF) {
-      options->ref_name = optarg;
-    }
-
-    if (set_command(options, command_option->command) < 0) {
-      return -1;
-    }
+  if (options->path != NULL) {
+    return -1;
   }
 
+  options->path = argument;
+  options->delete_mode =
+    option == 'F' ? BBFG_DELETE_FILENAME : BBFG_DELETE_PATH;
+  *delete_option = 1;
+  return 0;
+}
+
+static int
+parse_command_option(BbfgOptions* options, int option, const char* argument)
+{
+  const BbfgCommandOption* command_option = find_command_option(option);
+  if (command_option == NULL) {
+    return -1;
+  }
+
+  if (command_uses_path(command_option->command)) {
+    options->path = argument;
+  }
+
+  if (command_option->command == BBFG_COMMAND_REWRITE_REF) {
+    options->ref_name = argument;
+  }
+
+  return set_command(options, command_option->command);
+}
+
+static int
+parse_option(BbfgOptions* options,
+             int option,
+             const char* argument,
+             int* delete_option)
+{
+  if (option == 'h') {
+    return 1;
+  }
+
+  if (option == 'D' || option == 'F') {
+    return parse_delete_option(options, option, argument, delete_option);
+  }
+
+  return parse_command_option(options, option, argument);
+}
+
+static int
+finish_options(BbfgOptions* options, int argc, char** argv, int delete_option)
+{
   if (optind + 1 != argc) {
     return -1;
   }
@@ -203,4 +225,28 @@ bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
   }
 
   return 0;
+}
+
+int
+bbfg_parse_options(BbfgOptions* options, int argc, char** argv)
+{
+  struct option
+    long_options[sizeof(command_options) / sizeof(command_options[0]) + 4];
+  int option;
+  int delete_option = 0;
+
+  fill_long_options(long_options);
+  init_options(options);
+  opterr = 0;
+
+  while ((option = getopt_long(
+            argc, argv, "+hctTrRwBd:C:W:H:u:UD:F:", long_options, NULL)) !=
+         -1) {
+    int result = parse_option(options, option, optarg, &delete_option);
+    if (result != 0) {
+      return result;
+    }
+  }
+
+  return finish_options(options, argc, argv, delete_option);
 }
