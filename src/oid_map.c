@@ -53,6 +53,16 @@ bbfg_oid_map_get(const BbfgOidMap* map, const git_oid* old_id)
   return &entry->new_id;
 }
 
+const git_oid*
+bbfg_oid_map_value_at(const BbfgOidMap* map, size_t index)
+{
+  if (index >= map->count) {
+    return NULL;
+  }
+
+  return &map->entries[index]->new_id;
+}
+
 int
 bbfg_oid_map_put(BbfgOidMap* map, const git_oid* old_id, const git_oid* new_id)
 {

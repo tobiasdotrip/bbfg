@@ -17,7 +17,11 @@ if [[ -z "$criterion_pc" ]]; then
 
   git clone --depth 1 --branch "$criterion_version" \
     https://github.com/Snaipe/Criterion.git "$source_dir"
-  meson setup "$source_dir/build" "$source_dir" \
+  criterion_meson_env=()
+  if [[ -n "${CRITERION_CFLAGS:-}" ]]; then
+    criterion_meson_env+=(CFLAGS="$CRITERION_CFLAGS")
+  fi
+  env "${criterion_meson_env[@]}" meson setup "$source_dir/build" "$source_dir" \
     --buildtype=release \
     --prefix="$prefix" \
     -Dcxx-support=disabled \

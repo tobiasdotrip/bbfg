@@ -57,6 +57,7 @@ jobs:
         shell: msys2 {0}
         env:
           CI_CRITERION_PREFIX: .ci/criterion
+          CRITERION_CFLAGS: -Wno-error=incompatible-pointer-types
         run: |
           source .github/scripts/install-criterion.sh
           make CC=gcc test

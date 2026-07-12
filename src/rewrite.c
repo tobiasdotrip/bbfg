@@ -413,7 +413,7 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     }
   }
 
-  if (result == 0 && bbfg_mempack_commit(&mempack, repo) < 0) {
+  if (result == 0 && bbfg_mempack_commit(&mempack, repo, &state.tags) < 0) {
     bbfg_print_git_error("could not write rewritten objects", repo_path);
     result = -1;
   }
@@ -629,9 +629,10 @@ copy_rewritten_ref_tips(BbfgRewriteRef* refs,
 static int
 commit_rewrite_pack(BbfgMempack* mempack,
                     git_repository* repo,
-                    const char* repo_path)
+                    const char* repo_path,
+                    const BbfgOidMap* rewritten_tags)
 {
-  if (bbfg_mempack_commit(mempack, repo) < 0) {
+  if (bbfg_mempack_commit(mempack, repo, rewritten_tags) < 0) {
     bbfg_print_git_error("could not write rewritten objects", repo_path);
     return -1;
   }
@@ -814,7 +815,7 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
   }
 
   if (result == 0) {
-    result = commit_rewrite_pack(&mempack, repo, repo_path);
+    result = commit_rewrite_pack(&mempack, repo, repo_path, &state.tags);
   }
   if (result < 0) {
     bbfg_mempack_abort(&mempack);

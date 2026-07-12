@@ -25,8 +25,9 @@ DEBUGFLAGS ?= -g
 OPTFLAGS ?= -O0
 SANITIZER_FLAGS ?=
 LDFLAGS ?=
-CFLAGS := -D_POSIX_C_SOURCE=200809L -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) $(SANITIZER_FLAGS) -MMD -MP
 LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
+LIBGIT2_HAS_THIN_PACK := $(shell $(PKG_CONFIG) --atleast-version=1.9.0 libgit2 && echo 1 || echo 0)
+CFLAGS := -DBBFG_LIBGIT2_HAS_THIN_PACK=$(LIBGIT2_HAS_THIN_PACK) -D_POSIX_C_SOURCE=200809L -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) $(SANITIZER_FLAGS) -MMD -MP
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
 TEST_SRC := $(wildcard tests/*.c)

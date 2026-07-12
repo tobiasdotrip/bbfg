@@ -108,7 +108,7 @@ jobs:
                 ninja-build \
                 pkg-config
               source .github/scripts/install-criterion.sh
-              make test
+              make CC=gcc test
               if [[ "$UPLOAD_ARTIFACTS" == true ]]; then
                 mkdir -p dist
                 archive=bbfg-linux-armv7.tar.gz

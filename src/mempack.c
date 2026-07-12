@@ -5,6 +5,10 @@
 #include <git2/sys/mempack.h>
 #include <git2/sys/odb_backend.h>
 
+#ifndef BBFG_LIBGIT2_HAS_THIN_PACK
+#define BBFG_LIBGIT2_HAS_THIN_PACK 0
+#endif
+
 static int
 write_pack(git_odb* odb, const git_buf* pack)
 {
@@ -44,9 +48,53 @@ bbfg_mempack_begin(BbfgMempack* mempack, git_repository* repo)
   return 0;
 }
 
-int
-bbfg_mempack_commit(BbfgMempack* mempack, git_repository* repo)
+#if !BBFG_LIBGIT2_HAS_THIN_PACK
+static int
+write_tag_pack(git_odb* odb,
+               git_repository* repo,
+               const BbfgOidMap* rewritten_tags)
 {
+  if (rewritten_tags == NULL || rewritten_tags->count == 0) {
+    return 0;
+  }
+
+  git_packbuilder* packbuilder = NULL;
+  if (git_packbuilder_new(&packbuilder, repo) < 0) {
+    return -1;
+  }
+
+  git_packbuilder_set_threads(packbuilder, 0);
+  int result = 0;
+  size_t i;
+  for (i = 0; i < rewritten_tags->count; i++) {
+    const git_oid* tag_id = bbfg_oid_map_value_at(rewritten_tags, i);
+    result = git_packbuilder_insert(packbuilder, tag_id, NULL);
+    if (result < 0) {
+      break;
+    }
+  }
+
+  git_buf pack = GIT_BUF_INIT;
+  if (result == 0) {
+    result = git_packbuilder_write_buf(&pack, packbuilder);
+  }
+  if (result == 0) {
+    result = write_pack(odb, &pack);
+  }
+
+  git_buf_dispose(&pack);
+  git_packbuilder_free(packbuilder);
+  return result;
+}
+#endif
+
+int
+bbfg_mempack_commit(BbfgMempack* mempack,
+                    git_repository* repo,
+                    const BbfgOidMap* rewritten_tags)
+{
+#if BBFG_LIBGIT2_HAS_THIN_PACK
+  (void)rewritten_tags;
   git_packbuilder* packbuilder = NULL;
   if (git_packbuilder_new(&packbuilder, repo) < 0) {
     return -1;
@@ -59,12 +107,23 @@ bbfg_mempack_commit(BbfgMempack* mempack, git_repository* repo)
   if (result == 0) {
     result = git_packbuilder_write_buf(&pack, packbuilder);
   }
+#else
+  git_buf pack = GIT_BUF_INIT;
+  int result = git_mempack_dump(&pack, repo, mempack->backend);
+#endif
   if (result == 0) {
     result = write_pack(mempack->odb, &pack);
   }
+#if !BBFG_LIBGIT2_HAS_THIN_PACK
+  if (result == 0) {
+    result = write_tag_pack(mempack->odb, repo, rewritten_tags);
+  }
+#endif
 
   git_buf_dispose(&pack);
+#if BBFG_LIBGIT2_HAS_THIN_PACK
   git_packbuilder_free(packbuilder);
+#endif
   if (result == 0) {
     result = git_mempack_reset(mempack->backend);
   }

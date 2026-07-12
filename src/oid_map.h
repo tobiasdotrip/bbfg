@@ -20,6 +20,9 @@ typedef struct
 const git_oid*
 bbfg_oid_map_get(const BbfgOidMap* map, const git_oid* old_id);
 
+const git_oid*
+bbfg_oid_map_value_at(const BbfgOidMap* map, size_t index);
+
 int
 bbfg_oid_map_put(BbfgOidMap* map, const git_oid* old_id, const git_oid* new_id);
 
