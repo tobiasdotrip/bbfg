@@ -33,6 +33,9 @@ void
 bbfg_test_add_annotated_tag(const char* repo);
 
 void
+bbfg_test_add_nested_annotated_tags(const char* repo);
+
+void
 bbfg_test_add_large_file(const char* repo);
 
 void

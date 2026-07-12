@@ -11,6 +11,7 @@
 typedef struct
 {
   BbfgOidMap commits;
+  BbfgOidMap tags;
   BbfgOidMap trees;
 } RewriteState;
 
@@ -30,9 +31,12 @@ rewrite_history_from_walk(RewriteState* state,
                           size_t protected_commit_count);
 
 static int
-create_rewritten_tag(git_oid* rewritten_ref_id,
-                     git_repository* repo,
-                     const BbfgRewriteRef* ref);
+rewrite_tag(git_oid* rewritten_tag_id,
+            git_repository* repo,
+            const char* repo_path,
+            const git_oid* original_tag_id,
+            const BbfgOidMap* commits,
+            BbfgOidMap* tags);
 
 static void
 free_commit_array(const git_commit** commits, size_t count)
@@ -365,7 +369,9 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
     return -1;
   }
 
-  RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  RewriteState state = { BBFG_OID_MAP_INIT,
+                         BBFG_OID_MAP_INIT,
+                         BBFG_OID_MAP_INIT };
   BbfgMempack mempack = BBFG_MEMPACK_INIT;
   if (bbfg_mempack_begin(&mempack, repo) < 0) {
     bbfg_print_git_error("could not start object pack", repo_path);
@@ -394,8 +400,12 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
       if (rewrite_ref != NULL) {
         git_oid_cpy(&rewrite_ref->rewritten_commit_id, rewritten_tip_id);
         if (rewrite_ref->kind == BBFG_REWRITE_ANNOTATED_TAG) {
-          result = create_rewritten_tag(
-            &rewrite_ref->rewritten_ref_id, repo, rewrite_ref);
+          result = rewrite_tag(&rewrite_ref->rewritten_ref_id,
+                               repo,
+                               repo_path,
+                               &rewrite_ref->original_ref_id,
+                               &state.commits,
+                               &state.tags);
         } else {
           git_oid_cpy(&rewrite_ref->rewritten_ref_id, rewritten_tip_id);
         }
@@ -412,6 +422,7 @@ rewrite_history_from_commit(git_oid* rewritten_commit_id,
   }
 
   bbfg_oid_map_dispose(&state.commits);
+  bbfg_oid_map_dispose(&state.tags);
   bbfg_oid_map_dispose(&state.trees);
   bbfg_mempack_dispose(&mempack);
   git_revwalk_free(walk);
@@ -464,32 +475,74 @@ classify_ref(BbfgRewriteRef* ref, git_repository* repo)
 }
 
 static int
-create_rewritten_tag(git_oid* rewritten_ref_id,
-                     git_repository* repo,
-                     const BbfgRewriteRef* ref)
+rewrite_tag(git_oid* rewritten_tag_id,
+            git_repository* repo,
+            const char* repo_path,
+            const git_oid* original_tag_id,
+            const BbfgOidMap* commits,
+            BbfgOidMap* tags)
 {
+  const git_oid* cached_tag_id = bbfg_oid_map_get(tags, original_tag_id);
+  if (cached_tag_id != NULL) {
+    git_oid_cpy(rewritten_tag_id, cached_tag_id);
+    return 0;
+  }
+
   git_tag* tag = NULL;
-  if (git_tag_lookup(&tag, repo, &ref->original_ref_id) < 0) {
-    bbfg_print_git_error("could not read annotated tag", ref->name);
+  if (git_tag_lookup(&tag, repo, original_tag_id) < 0) {
+    bbfg_print_git_error("could not read annotated tag", repo_path);
     return -1;
   }
 
-  git_object* target = NULL;
-  if (git_object_lookup(
-        &target, repo, &ref->rewritten_commit_id, GIT_OBJECT_COMMIT) < 0) {
-    bbfg_print_git_error("could not read rewritten tag target", ref->name);
+  const git_oid* original_target_id = git_tag_target_id(tag);
+  git_object_t target_type = git_tag_target_type(tag);
+  git_oid rewritten_target_id;
+  if (original_target_id == NULL ||
+      (target_type != GIT_OBJECT_TAG && target_type != GIT_OBJECT_COMMIT)) {
+    bbfg_print_git_error("annotated tag does not point to a commit or tag",
+                         repo_path);
     git_tag_free(tag);
     return -1;
   }
 
-  int result = git_tag_annotation_create(rewritten_ref_id,
-                                         repo,
-                                         git_tag_name(tag),
-                                         target,
-                                         git_tag_tagger(tag),
-                                         git_tag_message(tag));
+  int result = 0;
+  if (target_type == GIT_OBJECT_TAG) {
+    result = rewrite_tag(
+      &rewritten_target_id, repo, repo_path, original_target_id, commits, tags);
+  } else {
+    const git_oid* rewritten_commit_id =
+      bbfg_oid_map_get(commits, original_target_id);
+    if (rewritten_commit_id == NULL) {
+      bbfg_print_git_error("could not find rewritten tag target", repo_path);
+      git_tag_free(tag);
+      return -1;
+    } else {
+      git_oid_cpy(&rewritten_target_id, rewritten_commit_id);
+    }
+  }
+
   if (result < 0) {
-    bbfg_print_git_error("could not create rewritten tag", ref->name);
+    git_tag_free(tag);
+    return -1;
+  }
+
+  git_object* target = NULL;
+  if (git_object_lookup(&target, repo, &rewritten_target_id, target_type) < 0) {
+    bbfg_print_git_error("could not read rewritten tag target", repo_path);
+    git_tag_free(tag);
+    return -1;
+  }
+
+  result = git_tag_annotation_create(rewritten_tag_id,
+                                     repo,
+                                     git_tag_name(tag),
+                                     target,
+                                     git_tag_tagger(tag),
+                                     git_tag_message(tag));
+  if (result < 0) {
+    bbfg_print_git_error("could not create rewritten tag", repo_path);
+  } else {
+    result = bbfg_oid_map_put(tags, original_tag_id, rewritten_tag_id);
   }
 
   git_object_free(target);
@@ -540,14 +593,16 @@ push_ref_tips(git_oid* tip_ids,
 static int
 copy_rewritten_ref_tips(BbfgRewriteRef* refs,
                         git_repository* repo,
+                        const char* repo_path,
                         const git_oid* tip_ids,
-                        const BbfgOidMap* commits,
+                        RewriteState* state,
                         size_t ref_count)
 {
   size_t i;
 
   for (i = 0; i < ref_count; i++) {
-    const git_oid* rewritten_tip_id = bbfg_oid_map_get(commits, &tip_ids[i]);
+    const git_oid* rewritten_tip_id =
+      bbfg_oid_map_get(&state->commits, &tip_ids[i]);
     if (rewritten_tip_id == NULL) {
       bbfg_print_git_error("could not find rewritten tip", refs[i].name);
       return -1;
@@ -555,7 +610,12 @@ copy_rewritten_ref_tips(BbfgRewriteRef* refs,
 
     git_oid_cpy(&refs[i].rewritten_commit_id, rewritten_tip_id);
     if (refs[i].kind == BBFG_REWRITE_ANNOTATED_TAG) {
-      if (create_rewritten_tag(&refs[i].rewritten_ref_id, repo, &refs[i]) < 0) {
+      if (rewrite_tag(&refs[i].rewritten_ref_id,
+                      repo,
+                      repo_path,
+                      &refs[i].original_ref_id,
+                      &state->commits,
+                      &state->tags) < 0) {
         return -1;
       }
     } else {
@@ -730,7 +790,9 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
     return -1;
   }
 
-  RewriteState state = { BBFG_OID_MAP_INIT, BBFG_OID_MAP_INIT };
+  RewriteState state = { BBFG_OID_MAP_INIT,
+                         BBFG_OID_MAP_INIT,
+                         BBFG_OID_MAP_INIT };
   BbfgMempack mempack = BBFG_MEMPACK_INIT;
   if (bbfg_mempack_begin(&mempack, repo) < 0) {
     bbfg_print_git_error("could not start object pack", repo_path);
@@ -747,8 +809,8 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
                                          filter->protect_blobs ? tip_ids : NULL,
                                          filter->protect_blobs ? ref_count : 0);
   if (result == 0) {
-    result =
-      copy_rewritten_ref_tips(refs, repo, tip_ids, &state.commits, ref_count);
+    result = copy_rewritten_ref_tips(
+      refs, repo, repo_path, tip_ids, &state, ref_count);
   }
 
   if (result == 0) {
@@ -759,6 +821,7 @@ bbfg_rewrite_ref_histories(BbfgRewriteRef* refs,
   }
 
   bbfg_oid_map_dispose(&state.commits);
+  bbfg_oid_map_dispose(&state.tags);
   bbfg_oid_map_dispose(&state.trees);
   bbfg_mempack_dispose(&mempack);
   free(tip_ids);

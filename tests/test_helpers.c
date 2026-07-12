@@ -199,6 +199,23 @@ bbfg_test_add_annotated_tag(const char* repo)
 }
 
 void
+bbfg_test_add_nested_annotated_tags(const char* repo)
+{
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s tag -a -m 'Inner release' inner HEAD", repo),
+               0);
+
+  char* inner_id =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/inner", repo);
+  bbfg_test_strip_trailing_newline(inner_id);
+  cr_assert_eq(
+    bbfg_test_run_command(
+      "git -C %s tag -a -m 'Outer release' outer %s", repo, inner_id),
+    0);
+  free(inner_id);
+}
+
+void
 bbfg_test_add_large_file(const char* repo)
 {
   cr_assert_eq(

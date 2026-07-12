@@ -352,6 +352,73 @@ Test(cli, rewrite_annotated_tag)
   bbfg_test_cleanup(tmpdir);
 }
 
+Test(cli, rewrite_nested_annotated_tags)
+{
+  char tmpdir[BBFG_TEST_PATH_SIZE];
+  char repo[BBFG_TEST_PATH_SIZE];
+  const char* bbfg = bbfg_test_path();
+
+  bbfg_test_init_repo(tmpdir, sizeof(tmpdir), repo, sizeof(repo));
+  bbfg_test_add_nested_annotated_tags(repo);
+
+  char* before_inner =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/inner", repo);
+  bbfg_test_strip_trailing_newline(before_inner);
+  char* before_outer =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/outer", repo);
+  bbfg_test_strip_trailing_newline(before_outer);
+
+  char* output = bbfg_test_read_command(
+    "%s --rewrite-refs --delete dir/nested.txt --no-blob-protection %s",
+    bbfg,
+    repo);
+  free(output);
+
+  char* after_inner =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/inner", repo);
+  bbfg_test_strip_trailing_newline(after_inner);
+  char* after_outer =
+    bbfg_test_read_command("git -C %s rev-parse refs/tags/outer", repo);
+  bbfg_test_strip_trailing_newline(after_outer);
+  cr_assert_str_neq(after_inner, before_inner);
+  cr_assert_str_neq(after_outer, before_outer);
+
+  char* outer_target = bbfg_test_read_command(
+    "git -C %s cat-file -p %s | sed -n 's/^object //p'", repo, after_outer);
+  bbfg_test_strip_trailing_newline(outer_target);
+  char* outer_target_type =
+    bbfg_test_read_command("git -C %s cat-file -t %s", repo, outer_target);
+  cr_assert_str_eq(outer_target_type, "tag\n");
+  cr_assert_str_eq(after_inner, outer_target);
+  free(outer_target_type);
+
+  char* inner_target = bbfg_test_read_command(
+    "git -C %s cat-file -p %s | sed -n 's/^object //p'", repo, outer_target);
+  bbfg_test_strip_trailing_newline(inner_target);
+  char* inner_target_type =
+    bbfg_test_read_command("git -C %s cat-file -t %s", repo, inner_target);
+  cr_assert_str_eq(inner_target_type, "commit\n");
+  free(inner_target_type);
+
+  char* names = bbfg_test_read_command(
+    "git -C %s ls-tree -r --name-only %s", repo, inner_target);
+  cr_assert_null(strstr(names, "dir/nested.txt"));
+  cr_assert_not_null(strstr(names, "file.txt"));
+  free(names);
+
+  cr_assert_eq(bbfg_test_run_command(
+                 "git -C %s fsck --full --no-progress >/dev/null", repo),
+               0);
+
+  free(inner_target);
+  free(outer_target);
+  free(after_outer);
+  free(after_inner);
+  free(before_outer);
+  free(before_inner);
+  bbfg_test_cleanup(tmpdir);
+}
+
 Test(cli, rewrite_combined_filters)
 {
   char tmpdir[BBFG_TEST_PATH_SIZE];
