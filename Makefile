@@ -1,5 +1,6 @@
 CC := clang
 PKG_CONFIG := pkg-config
+export PKG_CONFIG_PATH := /usr/local/lib/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 
 TARGET := bbfg
 BUILD_DIR := build
@@ -24,7 +25,7 @@ DEBUGFLAGS ?= -g
 OPTFLAGS ?= -O0
 SANITIZER_FLAGS ?=
 LDFLAGS ?=
-CFLAGS := -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) $(SANITIZER_FLAGS) -MMD -MP
+CFLAGS := -D_POSIX_C_SOURCE=200809L -std=c99 -pedantic $(WARNINGS) $(DEBUGFLAGS) $(OPTFLAGS) $(SANITIZER_FLAGS) -MMD -MP
 LIBGIT2_CFLAGS := $(shell $(PKG_CONFIG) --cflags libgit2)
 CPPFLAGS := $(patsubst -I%,-isystem %,$(LIBGIT2_CFLAGS))
 LDLIBS := $(shell $(PKG_CONFIG) --libs libgit2)
@@ -74,7 +75,7 @@ test-sanitize:
 		LDFLAGS='-fsanitize=address,undefined' DEBUGFLAGS=-g OPTFLAGS=-O1 test
 
 tidy:
-	clang-tidy $(SRC) $(TEST_SRC) -- $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS)
+	clang-tidy --quiet $(SRC) $(TEST_SRC) -- $(CPPFLAGS) $(CRITERION_CPPFLAGS) $(CFLAGS)
 
 clean:
 	rm -rf $(BUILD_DIR)

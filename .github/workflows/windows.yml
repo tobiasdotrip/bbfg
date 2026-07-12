@@ -1,0 +1,88 @@
+name: CI / Windows
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CRITERION_VERSION: v2.4.3
+
+jobs:
+  windows:
+    name: Windows / ${{ matrix.name }}
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: i686
+            msystem: MINGW32
+          - name: x86_64
+            msystem: MINGW64
+    steps:
+      - name: Keep repository line endings compatible with MSYS2
+        shell: pwsh
+        run: git config --global core.autocrlf input
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            git
+            make
+            tar
+          pacboy: >-
+            cmake:p
+            gcc:p
+            libffi:p
+            libgit2:p
+            meson:p
+            ninja:p
+            pkgconf:p
+
+      - name: Build and test
+        shell: msys2 {0}
+        env:
+          CI_CRITERION_PREFIX: .ci/criterion
+        run: |
+          source .github/scripts/install-criterion.sh
+          make CC=gcc test
+
+      - name: Package Windows artifact
+        if: inputs.upload-artifacts
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          binary="$(find build -maxdepth 1 -type f \( -iname 'bbfg.exe' -o -iname 'bbfg' \) -print -quit)"
+          test -n "$binary"
+          archive="bbfg-windows-${{ matrix.name }}.tar.gz"
+          package_dir="dist/bbfg-windows-${{ matrix.name }}"
+          mkdir -p "$package_dir"
+          cp "$binary" "$package_dir/bbfg.exe"
+          cp README.md "$package_dir/"
+          tar -czf "dist/$archive" -C dist "bbfg-windows-${{ matrix.name }}"
+          rm -rf "$package_dir"
+          (cd dist && sha256sum "$archive" > "$archive.sha256")
+
+      - name: Upload Windows artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: bbfg-windows-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

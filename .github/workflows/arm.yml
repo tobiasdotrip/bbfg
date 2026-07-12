@@ -1,0 +1,127 @@
+name: CI / ARM
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CRITERION_VERSION: v2.4.3
+
+jobs:
+  arm64:
+    name: Linux / arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            clang-format \
+            clang-tidy \
+            cmake \
+            libffi-dev \
+            libgit2-dev \
+            meson \
+            ninja-build \
+            pkg-config
+
+      - name: Build, test and lint
+        env:
+          CI_CRITERION_PREFIX: .ci/criterion
+        run: |
+          source .github/scripts/install-criterion.sh
+          make test
+          make tidy
+          clang-format --dry-run --Werror src/*.[ch] tests/*.[ch]
+
+      - name: Run sanitizers
+        env:
+          CI_CRITERION_PREFIX: .ci/criterion
+        run: |
+          source .github/scripts/install-criterion.sh
+          make test-sanitize
+
+      - name: Package ARM64 artifact
+        if: inputs.upload-artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          archive=bbfg-linux-arm64.tar.gz
+          tar -czf "dist/$archive" -C build bbfg
+          (cd dist && sha256sum "$archive" > "$archive.sha256")
+
+      - name: Upload ARM64 artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: bbfg-linux-arm64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  arm32:
+    name: Linux / armv7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm
+
+      - name: Build and test under ARMv7
+        env:
+          UPLOAD_ARTIFACTS: ${{ inputs.upload-artifacts }}
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -e CI_CRITERION_PREFIX=/workspace/.ci/criterion \
+            -e UPLOAD_ARTIFACTS="$UPLOAD_ARTIFACTS" \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            debian:bookworm \
+            bash -euo pipefail -c '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                ca-certificates \
+                cmake \
+                git \
+                libffi-dev \
+                libgit2-dev \
+                meson \
+                ninja-build \
+                pkg-config
+              source .github/scripts/install-criterion.sh
+              make test
+              if [[ "$UPLOAD_ARTIFACTS" == true ]]; then
+                mkdir -p dist
+                archive=bbfg-linux-armv7.tar.gz
+                tar -czf "dist/$archive" -C build bbfg
+                (cd dist && sha256sum "$archive" > "$archive.sha256")
+              fi
+            '
+
+      - name: Upload ARMv7 artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: bbfg-linux-armv7
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

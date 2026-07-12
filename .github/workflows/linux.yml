@@ -1,0 +1,121 @@
+name: CI / Linux
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CRITERION_VERSION: v2.4.3
+
+jobs:
+  linux:
+    name: Linux / ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian
+            family: debian
+            image: debian:bookworm
+          - name: rocky
+            family: rocky
+            image: rockylinux:9
+    steps:
+      - name: Bootstrap Debian
+        if: matrix.family == 'debian'
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+      - name: Bootstrap Rocky Linux
+        if: matrix.family == 'rocky'
+        shell: bash
+        run: |
+          dnf install -y ca-certificates dnf-plugins-core epel-release git
+          dnf config-manager --set-enabled crb || true
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Debian dependencies
+        if: matrix.family == 'debian'
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            clang-format \
+            clang-tidy \
+            cmake \
+            libffi-dev \
+            libgit2-dev \
+            meson \
+            ninja-build \
+            pkg-config
+
+      - name: Install Rocky Linux dependencies
+        if: matrix.family == 'rocky'
+        shell: bash
+        run: |
+          dnf install -y \
+            clang \
+            clang-tools-extra \
+            cmake \
+            gcc \
+            libffi-devel \
+            libgit2-devel \
+            make \
+            meson \
+            ninja-build \
+            pkgconf-pkg-config
+
+      - name: Build, test and lint
+        shell: bash
+        env:
+          CI_CRITERION_PREFIX: .ci/criterion
+        run: |
+          source .github/scripts/install-criterion.sh
+          make test
+          make tidy
+          clang-format --dry-run --Werror src/*.[ch] tests/*.[ch]
+
+      - name: Run sanitizers
+        if: matrix.family == 'debian'
+        shell: bash
+        env:
+          CI_CRITERION_PREFIX: .ci/criterion
+        run: |
+          source .github/scripts/install-criterion.sh
+          make test-sanitize
+
+      - name: Package Linux artifact
+        if: inputs.upload-artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          archive="bbfg-linux-${{ matrix.name }}.tar.gz"
+          tar -czf "dist/$archive" -C build bbfg
+          (cd dist && sha256sum "$archive" > "$archive.sha256")
+
+      - name: Upload Linux artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: bbfg-linux-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

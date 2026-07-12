@@ -249,8 +249,9 @@ bbfg_test_init_repo(char* tmpdir,
     bbfg_test_read_command("mktemp -d /tmp/bbfg-criterion.XXXXXX");
   bbfg_test_strip_trailing_newline(created_dir);
 
-  cr_assert(strlen(created_dir) < tmpdir_size);
-  strcpy(tmpdir, created_dir);
+  int tmpdir_length = snprintf(tmpdir, tmpdir_size, "%s", created_dir);
+  cr_assert(tmpdir_length >= 0);
+  cr_assert((size_t)tmpdir_length < tmpdir_size);
   free(created_dir);
 
   int length = snprintf(repo, repo_size, "%s/repo", tmpdir);
