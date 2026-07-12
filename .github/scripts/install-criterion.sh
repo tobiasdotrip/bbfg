@@ -34,8 +34,9 @@ if [[ -z "$criterion_pc" ]]; then
 fi
 
 pkgconfig_dir="$(dirname "$criterion_pc")"
+criterion_lib_dir="$(dirname "$pkgconfig_dir")"
 export PKG_CONFIG_PATH="$pkgconfig_dir${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 export PATH="$prefix/bin:$PATH"
-export LD_LIBRARY_PATH="$prefix/lib:$prefix/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$prefix/lib:$prefix/lib64:$criterion_lib_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 pkg-config --exists criterion

@@ -11,6 +11,12 @@
 
 #define BBFG_TEST_COMMAND_SIZE 8192
 
+#ifdef _WIN32
+#define BBFG_TEST_MKDIR "mkdir.exe -p"
+#else
+#define BBFG_TEST_MKDIR "mkdir -p"
+#endif
+
 typedef struct
 {
   const char* path;
@@ -152,7 +158,8 @@ configure_repo(const char* repo)
 static void
 create_initial_files(const char* repo)
 {
-  cr_assert_eq(bbfg_test_run_command("mkdir %s/dir %s/other", repo, repo), 0);
+  cr_assert_eq(
+    bbfg_test_run_command(BBFG_TEST_MKDIR " %s/dir %s/other", repo, repo), 0);
   write_repo_file(repo, (TestFile){ "file.txt", "hello\n" });
   write_repo_file(repo, (TestFile){ "dir/nested.txt", "nested\n" });
   write_repo_file(repo, (TestFile){ "other/nested.txt", "another nested\n" });
